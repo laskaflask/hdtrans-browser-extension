@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <title>hdTrans engine</title>
+    <!-- Firefox runs the engine in its background page and has no offscreen documents. -->
+    <meta name="manifest.include" content="['chrome']" />
   </head>
   <body>
     <script type="module" src="./main.ts"></script>

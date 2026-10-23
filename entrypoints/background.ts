@@ -1,10 +1,11 @@
 import { matchingRules, rulesToTsv, type DictRule } from '@/lib/dictionary';
+import { extensionFiles, lazyEngine } from '@/lib/engine';
 import type {
   BackgroundRequest,
   ContentRequest,
   ContentStatus,
-  OffscreenRequest,
-  OffscreenResponse,
+  EngineRequest,
+  EngineResponse,
   TranslateBatchResponse,
   UiRequest,
 } from '@/lib/messages';
@@ -46,10 +47,10 @@ export default defineBackground(() => {
         sendToPage(msg.tabId, { type: msg.action }).then(sendResponse);
         return true;
       case 'ui-check-userdict':
-        callEngine({ target: 'offscreen', type: 'check-userdict', userDict: msg.userDict }).then(sendResponse);
+        callEngine({ type: 'check-userdict', userDict: msg.userDict }).then(sendResponse);
         return true;
       case 'ui-engine-info':
-        callEngine({ target: 'offscreen', type: 'info' }).then(sendResponse);
+        callEngine({ type: 'info' }).then(sendResponse);
         return true;
     }
   });
@@ -73,7 +74,22 @@ async function userDictFor(url: string): Promise<string> {
 
 async function translateBatch(url: string, lines: string[]): Promise<TranslateBatchResponse> {
   const [userDict, settings] = await Promise.all([userDictFor(url), getSettings()]);
-  return callEngine({ target: 'offscreen', type: 'translate', lines, userDict, speech: settings.speech });
+  return callEngine({ type: 'translate', lines, userDict, speech: settings.speech });
+}
+
+// Firefox's background page has a DOM and runs the engine itself; Chrome's service worker
+// cannot, so there the engine lives in an offscreen document.
+const localEngine = import.meta.env.FIREFOX ? lazyEngine(extensionFiles) : undefined;
+
+async function callEngine(msg: EngineRequest): Promise<EngineResponse> {
+  if (localEngine) return localEngine(msg);
+  try {
+    await ensureOffscreen();
+    const response: EngineResponse | undefined = await browser.runtime.sendMessage({ ...msg, target: 'offscreen' });
+    return response ?? { error: '번역 엔진이 응답하지 않았습니다.' };
+  } catch (error) {
+    return { error: String(error) };
+  }
 }
 
 let creatingOffscreen: Promise<void> | undefined;
@@ -95,16 +111,6 @@ async function ensureOffscreen(): Promise<void> {
       creatingOffscreen = undefined;
     });
   await creatingOffscreen;
-}
-
-async function callEngine(msg: OffscreenRequest): Promise<OffscreenResponse> {
-  try {
-    await ensureOffscreen();
-    const response: OffscreenResponse | undefined = await browser.runtime.sendMessage(msg);
-    return response ?? { error: '번역 엔진이 응답하지 않았습니다.' };
-  } catch (error) {
-    return { error: String(error) };
-  }
 }
 
 /** Injects the page script on first use (activeTab grants access after a menu or popup click). */

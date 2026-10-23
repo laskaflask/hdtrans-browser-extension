@@ -12,7 +12,7 @@ import {
   type DictRule,
   type MatchType,
 } from '@/lib/dictionary';
-import type { OffscreenResponse, UiRequest } from '@/lib/messages';
+import type { EngineResponse, UiRequest } from '@/lib/messages';
 import { dictRulesItem, getSettings, settingsItem, type Settings } from '@/lib/storage';
 
 const POS = ['n', 'phrase', 'name', 'surname', 'intj', 'lead', 'hon', 'v', 'v1', 'v5', 'adj', 'na', 'adv', 'ono', 'end', 'pat'];
@@ -414,7 +414,7 @@ async function save(): Promise<void> {
   // Let the engine parse each dictionary; rows it rejects are reported, the rest still apply.
   const warnings: string[] = [];
   for (const rule of rules.filter((r) => r.entries.length)) {
-    const res = await send<OffscreenResponse>({ type: 'ui-check-userdict', userDict: rulesToTsv([rule]) });
+    const res = await send<EngineResponse>({ type: 'ui-check-userdict', userDict: rulesToTsv([rule]) });
     if (res.error) warnings.push(`엔진 확인 실패: ${res.error}`);
     else if (res.userDictWarning) warnings.push(`${rule.name}\n${res.userDictWarning.replace(/^(\d+):/gm, (_, n) => `  ${Number(n) - 1}번째 행:`)}`);
   }
@@ -491,7 +491,7 @@ async function main(): Promise<void> {
     if (dirty) e.preventDefault();
   });
 
-  const info = await send<OffscreenResponse>({ type: 'ui-engine-info' });
+  const info = await send<EngineResponse>({ type: 'ui-engine-info' });
   engineInfo = info.info ? `엔진 ${info.info.version} · 사전 ${info.info.dictionaryVersion}` : `엔진 오류: ${info.error}`;
   version.textContent = engineInfo;
 }

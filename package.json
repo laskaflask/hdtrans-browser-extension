@@ -7,8 +7,13 @@
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
     "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "build:all": "wxt build && wxt build -b firefox",
     "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "build:engine": "scripts/build-engine.sh",
     "compile": "tsc --noEmit",
     "test": "vitest run",
     "postinstall": "wxt prepare"
