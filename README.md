@@ -97,6 +97,7 @@ AMO는 번들·압축한 코드의 원본과, 검토자가 같은 결과물을 �
   위 [엔진](#엔진) 절차(`scripts/build-engine.sh`, Emscripten 4.0.22)로 빌드한 것이며, 같은 절차로 다시 만들 수
   있습니다. `runtime.js`와 사전(`dicts.hdsnap`, `dicts.txt`)은 npm `hdtrans` 패키지 파일을 고치지 않고 그대로
   복사합니다(`package-lock.json`에 버전과 무결성 값이 있음).
+- 제출할 때 검토자 메모 칸에는 [docs/amo-reviewer-notes.md](docs/amo-reviewer-notes.md)의 영어 본문을 붙여 넣습니다.
 
 ## 구조
 
