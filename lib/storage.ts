@@ -12,6 +12,8 @@ export interface Settings {
   observeMutations: boolean;
   /** Make text that is waiting to be translated pulse until it is. */
   showProgress: boolean;
+  /** Keep the original text and show the translation after it. */
+  bilingual: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -19,6 +21,7 @@ export const DEFAULT_SETTINGS: Settings = {
   translateAttributes: true,
   observeMutations: true,
   showProgress: true,
+  bilingual: false,
 };
 
 // storage.local: dictionaries can outgrow storage.sync's per-item quota.

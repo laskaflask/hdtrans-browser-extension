@@ -3,7 +3,7 @@ import './style.css';
 import { h } from '@/lib/dom';
 import { matchingRules, MATCH_TYPE_LABELS } from '@/lib/dictionary';
 import type { ContentStatus, UiRequest } from '@/lib/messages';
-import { dictRulesItem } from '@/lib/storage';
+import { dictRulesItem, getSettings, settingsItem } from '@/lib/storage';
 
 const app = document.getElementById('app')!;
 
@@ -39,6 +39,7 @@ async function render(): Promise<void> {
   } catch {}
   const rules = matchingRules(await dictRulesItem.getValue(), url);
   let status: ContentStatus = tabId ? await pageStatus(tabId) : { state: 'original', done: 0, total: 0 };
+  const settings = await getSettings();
   let timer: ReturnType<typeof setInterval> | undefined;
 
   const draw = (): void => {
@@ -73,6 +74,27 @@ async function render(): Promise<void> {
           },
           '원래대로',
         ),
+      ),
+      h(
+        'label',
+        { class: 'switch' },
+        h('input', {
+          type: 'checkbox',
+          role: 'switch',
+          checked: settings.bilingual,
+          // A translated page redraws itself when the setting changes.
+          onchange: async (e: Event) => {
+            settings.bilingual = (e.target as HTMLInputElement).checked;
+            await settingsItem.setValue(settings);
+            if (!tabId || status.state === 'original') return;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            status = await pageStatus(tabId);
+            draw();
+            poll();
+          },
+        }),
+        h('span', { class: 'track' }),
+        '원문과 함께 표시',
       ),
       busy ? h('div', { class: 'progress' }, h('div', { style: `width:${pct}%` })) : '',
       status.error ? h('div', { class: 'error' }, status.error) : '',

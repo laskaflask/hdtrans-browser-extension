@@ -1,13 +1,13 @@
 // Injected on demand. Replaces Japanese text in the page with the translation and keeps the
 // originals so the page can be put back.
 import type { ContentRequest, ContentStatus, PageState, TranslateBatchResponse } from '@/lib/messages';
-import { getSettings, type Settings } from '@/lib/storage';
+import { getSettings, settingsItem, type Settings } from '@/lib/storage';
 import { takeBatch } from '@/lib/schedule';
 import { hasJapanese, planInline, planLines, type Plan } from '@/lib/text';
 
 /** Not translated, nor looked into. */
 const SKIP_TAGS = new Set([
-  'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'INPUT', 'SELECT', 'OPTION', 'CODE', 'KBD', 'SAMP', 'VAR',
+  'HDTRANS-TRANSLATION', 'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'INPUT', 'SELECT', 'OPTION', 'CODE', 'KBD', 'SAMP', 'VAR',
   'SVG', 'MATH', 'CANVAS', 'IFRAME', 'TEMPLATE', 'RT', 'RP',
 ]);
 /** Elements that stay within a line of text; a sentence may run across them. Skipped ones
@@ -18,6 +18,12 @@ const INLINE_TAGS = new Set([
   'VAR', 'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'RT', 'RP', 'SVG',
 ]);
 const ATTRIBUTES = ['title', 'alt', 'placeholder', 'aria-label'];
+/** Holds the translation shown after the original text when both are shown. */
+const TRANSLATION_TAG = 'hdtrans-translation';
+/** Text up to this long that is not a sentence (a menu item, a button, a heading) gets its
+ *  translation on the same line. */
+const SHORT_TEXT = 12;
+const SENTENCE_END = /[。．.！!？?」』）)]$/;
 const BATCH_LIMITS = { lines: 150, chars: 5000 };
 /** How far beyond the top and bottom of the screen text counts as on screen, in screen heights. */
 const SCREEN_MARGIN = 0.25;
@@ -41,6 +47,10 @@ interface Unit {
   element: Element | null;
   /** What this script last wrote; a different current value means the page changed it. */
   written?: string;
+  /** The text node, for text units. */
+  node?: Text;
+  /** The translation shown after the original text, when both are shown. */
+  translation?: Element;
 }
 
 /** Units translated together: the text nodes of one inline run, or one attribute. */
@@ -66,6 +76,7 @@ export default defineContentScript({
     if (w.__hdtransLoaded) return;
     w.__hdtransLoaded = true;
     const page = new PageTranslator();
+    settingsItem.watch((settings) => page.settingsChanged(settings));
     browser.runtime.onMessage.addListener((msg: ContentRequest, _sender, sendResponse) => {
       switch (msg?.type) {
         case 'translate-page':
@@ -139,6 +150,14 @@ class PageTranslator {
     if (this.settings.observeMutations) this.observe();
   }
 
+  /** Switching between translation only and both redraws a translated page. */
+  settingsChanged(next: Settings | null): void {
+    if (this.state === 'original' || !this.settings || !next) return;
+    if (!!next.bilingual === !!this.settings.bilingual) return;
+    this.restore();
+    void this.translate();
+  }
+
   restore(): void {
     this.generation++;
     this.observer?.disconnect();
@@ -150,6 +169,7 @@ class PageTranslator {
     const units = [...this.texts.values(), ...[...this.attrs.values()].flatMap((m) => [...m.values()])];
     for (const unit of units) {
       if (unit.written !== undefined && unit.read() === unit.written) unit.write(unit.original);
+      unit.translation?.remove();
     }
     this.texts.clear();
     this.attrs.clear();
@@ -203,10 +223,12 @@ class PageTranslator {
 
   /** Jobs for one inline run of text nodes; only runs with Japanese still to translate count. */
   private runJobs(nodes: Text[]): Job[] {
-    const fresh = nodes.filter((n) => {
+    let fresh = nodes.filter((n) => {
       const known = this.texts.get(n);
       return !known || n.nodeValue !== known.written;
     });
+    // Shown with its translation, the whole run is still original, so it is translated again whole.
+    if (this.settings.bilingual && fresh.length) fresh = nodes;
     if (!fresh.some((n) => hasJapanese(n.nodeValue ?? ''))) return [];
     const units = fresh.map((n) => this.textUnit(n));
     return [{ units, lines: this.isPre(blockOf(fresh[0]!)) }];
@@ -228,6 +250,7 @@ class PageTranslator {
     const unit: Unit = this.texts.get(node) ?? {
       original: value,
       element: node.parentElement,
+      node,
       read: () => node.nodeValue,
       write: (v) => {
         node.nodeValue = v;
@@ -418,11 +441,35 @@ class PageTranslator {
   private write(job: Job, values: string[]): void {
     // Leave the run alone if the page changed any of it while the batch was out.
     if (job.units.some((u) => u.read() !== u.original)) return;
+    if (this.settings.bilingual && !job.attribute) return this.writeAfter(job, values);
     job.units.forEach((unit, k) => {
       const value = values[k] ?? unit.original;
       unit.written = value;
       if (value !== unit.original) unit.write(value);
     });
+  }
+
+  /** Leaves the original as it is and shows the translation after it. */
+  private writeAfter(job: Job, values: string[]): void {
+    const original = job.units.map((u) => u.original).join('');
+    const joined = job.units.map((u, k) => values[k] ?? u.original).join('');
+    const text = job.lines ? joined.replace(/^\s*\n|\n\s*$/g, '') : joined.replace(/\s+/g, ' ').trim();
+    for (const unit of job.units) {
+      unit.written = unit.original;
+      unit.translation?.remove();
+      unit.translation = undefined;
+    }
+    const last = job.units.at(-1)?.node;
+    if (!text.trim() || text === original.trim() || !last?.parentNode) return;
+    const el = document.createElement(TRANSLATION_TAG);
+    el.lang = 'ko';
+    const label = original.trim();
+    const short = !job.lines && label.length <= SHORT_TEXT && !SENTENCE_END.test(label);
+    if (short) el.textContent = ` ${text}`;
+    else el.append(document.createElement('br'), text);
+    const anchor = runEnd(last);
+    anchor.parentNode!.insertBefore(el, anchor.nextSibling);
+    for (const unit of job.units) unit.translation = el;
   }
 
   private observe(): void {
@@ -467,6 +514,26 @@ function skipElement(el: Element): boolean {
 function insideSkipped(el: Element | null): boolean {
   for (let e = el; e; e = e.parentElement) if (skipElement(e)) return true;
   return false;
+}
+
+/** Where a run's translation goes: after its last text node, or after the inline elements
+ *  that node ends (so a sentence ending in a link gets its translation after the link). */
+function runEnd(node: Text): Node {
+  let end: Node = node;
+  for (let parent = end.parentElement; parent && INLINE_TAGS.has(parent.tagName.toUpperCase()); parent = parent.parentElement) {
+    if (!isLastContent(end)) break;
+    end = parent;
+  }
+  return end;
+}
+
+function isLastContent(node: Node): boolean {
+  for (let next = node.nextSibling; next; next = next.nextSibling) {
+    if (next.nodeType === Node.TEXT_NODE && !next.nodeValue?.trim()) continue;
+    if (next.nodeType === Node.COMMENT_NODE) continue;
+    return false;
+  }
+  return true;
 }
 
 /** The nearest ancestor that is not inline: it decides whether whitespace is preformatted. */

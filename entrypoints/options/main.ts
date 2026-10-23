@@ -96,6 +96,16 @@ function settingsSection(settings: Settings): HTMLElement {
         {},
         h('input', {
           type: 'checkbox',
+          checked: settings.bilingual,
+          onchange: (e: Event) => update({ bilingual: (e.target as HTMLInputElement).checked }),
+        }),
+        '원문과 번역문을 함께 표시',
+      ),
+      h(
+        'label',
+        {},
+        h('input', {
+          type: 'checkbox',
           checked: settings.showProgress,
           onchange: (e: Event) => update({ showProgress: (e.target as HTMLInputElement).checked }),
         }),
