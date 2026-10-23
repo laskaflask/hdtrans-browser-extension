@@ -1,0 +1,10 @@
+body { width: 300px; }
+main { padding: 14px; display: grid; gap: 10px; }
+header { display: flex; align-items: baseline; justify-content: space-between; }
+h1 { font-size: 15px; margin: 0; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.progress { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); transition: width 0.2s; }
+.rules { margin: 0; padding-left: 18px; font-size: 13px; }
+footer { display: flex; justify-content: space-between; font-size: 12px; }
+a { color: var(--accent); cursor: pointer; text-decoration: none; }
