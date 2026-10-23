@@ -57,7 +57,12 @@ export default defineBackground(() => {
 
   // A navigation drops the page's translation, so drop its badge too.
   browser.tabs.onUpdated.addListener((tabId, change) => {
-    if (change.status === 'loading') setBadge(tabId, 'original');
+    if (change.status === 'loading') {
+      setBadge(tabId, 'original');
+      try {
+        browser.pageAction?.show?.(tabId);
+      } catch {}
+    }
   });
 
   dictRulesItem.watch((rules) => {
@@ -130,6 +135,14 @@ async function sendToPage(tabId: number, msg: ContentRequest): Promise<ContentSt
 
 function setBadge(tabId: number, state: ContentStatus['state']): void {
   const text = state === 'translated' ? 'KO' : state === 'translating' ? '…' : '';
-  browser.action.setBadgeText({ tabId, text }).catch(() => {});
-  browser.action.setBadgeBackgroundColor({ tabId, color: '#2f6fed' }).catch(() => {});
+  if (browser.action?.setBadgeText) {
+    browser.action.setBadgeText({ tabId, text }).catch(() => {});
+    browser.action.setBadgeBackgroundColor({ tabId, color: '#2f6fed' }).catch(() => {});
+  }
+  if (browser.pageAction?.setTitle) {
+    const title = state === 'translated' ? 'hdTrans (번역됨)' : state === 'translating' ? 'hdTrans (번역 중…)' : 'hdTrans';
+    try {
+      browser.pageAction.setTitle({ tabId, title });
+    } catch {}
+  }
 }

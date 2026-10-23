@@ -29,6 +29,9 @@ export default defineConfig({
       },
     },
     ...(browser === 'firefox' && {
+      page_action: {
+        show_matches: ['http://*/*', 'https://*/*', 'file://*/*'],
+      },
       browser_specific_settings: {
         gecko: {
           id: 'hdtrans-ja-ko@hdtrans-browser-extension',
