@@ -50,6 +50,9 @@ npm run compile        # 타입 검사
 `HDTRANS_E2E=1`로 빌드하면 매니페스트에 `http://localhost/*` 접근 권한이 붙습니다. 브라우저 자동화는 `activeTab`을
 줄 수 없으므로 종단 간 테스트용으로만 씁니다.
 
+아이콘 원본은 `assets/icon.svg`이고, 이를 16·32·48·96·128px로 내보낸 PNG를 `public/icon/`에 둡니다(WXT가 매니페스트에
+넣음). 원본을 고치면 PNG도 다시 내보냅니다.
+
 ### 엔진
 
 npm 패키지 [`hdtrans`](https://www.npmjs.com/package/hdtrans)의 엔진은 Emscripten 기본값으로 링크되어 embind 코드가

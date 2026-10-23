@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="28" fill="#2f6fed"/>
+  <text x="34" y="58" font-size="50" font-weight="700" fill="#ffffff" fill-opacity="0.72" text-anchor="middle"
+    font-family="'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif">あ</text>
+  <text x="84" y="108" font-size="66" font-weight="800" fill="#ffffff" text-anchor="middle"
+    font-family="'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif">가</text>
+</svg>
