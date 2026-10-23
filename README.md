@@ -98,4 +98,4 @@ npm test                 # 엔진에 동적 코드가 없는지, 패키지와 �
 
 ## 라이선스
 
-hdTrans가 AGPL-3.0-or-later이므로 이 확장도 같은 라이선스를 따릅니다.
+hdTrans가 AGPL-3.0-or-later이므로 이 확장도 같은 라이선스를 따릅니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참고하세요.
