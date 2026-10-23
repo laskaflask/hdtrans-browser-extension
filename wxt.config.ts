@@ -41,10 +41,12 @@ export default defineConfig({
       browser_specific_settings: {
         gecko: {
           id: 'hdtrans-ja-ko@hdtrans-browser-extension',
-          strict_min_version: '128.0',
+          // data_collection_permissions needs 140 on desktop and 142 on Android.
+          strict_min_version: '142.0',
           // Nothing leaves the browser: translation and dictionaries are local.
           data_collection_permissions: { required: ['none'] },
         },
+        gecko_android: { strict_min_version: '142.0' },
       },
     }),
   }),

@@ -16,20 +16,21 @@ const MENU_RESTORE = 'hdtrans-restore-page';
 const OFFSCREEN_PATH = '/offscreen.html';
 
 export default defineBackground(() => {
+  // Firefox for Android has no context menus or keyboard shortcuts; the popup still works.
   browser.runtime.onInstalled.addListener(() => {
-    browser.contextMenus.removeAll(() => {
+    browser.contextMenus?.removeAll(() => {
       browser.contextMenus.create({ id: MENU_TRANSLATE, title: '페이지 전체 번역', contexts: ['page', 'selection', 'link', 'image'] });
       browser.contextMenus.create({ id: MENU_RESTORE, title: '원래대로 복원', contexts: ['page', 'selection', 'link', 'image'] });
     });
   });
 
-  browser.contextMenus.onClicked.addListener((info, tab) => {
+  browser.contextMenus?.onClicked.addListener((info, tab) => {
     if (!tab?.id) return;
     const action = info.menuItemId === MENU_RESTORE ? 'restore-page' : 'translate-page';
     void sendToPage(tab.id, { type: action });
   });
 
-  browser.commands.onCommand.addListener((command, tab) => {
+  browser.commands?.onCommand.addListener((command, tab) => {
     if (command === 'toggle-translation' && tab?.id) void sendToPage(tab.id, { type: 'toggle-page' });
   });
 
