@@ -1,5 +1,10 @@
 # 스토어 등록 자료
 
+- [listing.md](listing.md): 스토어 설명문 (Chrome 웹 스토어, AMO)
+- [chrome-privacy.md](chrome-privacy.md): Chrome 웹 스토어 개인정보 탭 답변
+- [../amo-reviewer-notes.md](../amo-reviewer-notes.md): AMO 검토자 메모
+- [../privacy.md](../privacy.md): 개인정보처리방침
+
 ## 스크린샷
 
 `screenshots/`의 1280×800 PNG 4장을 Chrome 웹 스토어와 Firefox 애드온(AMO)에 올립니다.
