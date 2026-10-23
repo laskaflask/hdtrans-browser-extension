@@ -124,6 +124,7 @@ class PageTranslator {
   private marked = new Map<Element, number>();
   private pendingStyle?: HTMLStyleElement;
   private preCache = new WeakMap<Element, boolean>();
+  private itemsCache = new WeakMap<Element, boolean>();
 
   status(): ContentStatus {
     return {
@@ -205,7 +206,7 @@ class PageTranslator {
       if (node.nodeType !== Node.ELEMENT_NODE) return;
       const el = node as Element;
       const tag = el.tagName.toUpperCase();
-      const inline = INLINE_TAGS.has(tag);
+      const inline = INLINE_TAGS.has(tag) && !this.laysOutItems(el.parentElement);
       if (tag === 'BR' || !inline) close();
       // Attributes are read even on skipped elements, so an <input>'s placeholder is translated.
       if (this.settings.translateAttributes && !optedOut(el)) {
@@ -232,6 +233,19 @@ class PageTranslator {
     if (!fresh.some((n) => hasJapanese(n.nodeValue ?? ''))) return [];
     const units = fresh.map((n) => this.textUnit(n));
     return [{ units, lines: this.isPre(blockOf(fresh[0]!)) }];
+  }
+
+  /** Children of a flex or grid container are laid out as separate blocks (a menu of links),
+   *  so a sentence does not run across them. */
+  private laysOutItems(el: Element | null): boolean {
+    if (!el) return false;
+    let items = this.itemsCache.get(el);
+    if (items === undefined) {
+      const display = getComputedStyle(el).display;
+      items = /flex|grid/.test(display);
+      this.itemsCache.set(el, items);
+    }
+    return items;
   }
 
   private isPre(el: Element | null): boolean {
@@ -467,9 +481,22 @@ class PageTranslator {
     const short = !job.lines && label.length <= SHORT_TEXT && !SENTENCE_END.test(label);
     if (short) el.textContent = ` ${text}`;
     else el.append(document.createElement('br'), text);
-    const anchor = runEnd(last);
+    const anchor = this.runEnd(last);
     anchor.parentNode!.insertBefore(el, anchor.nextSibling);
     for (const unit of job.units) unit.translation = el;
+  }
+
+  /** Where a run's translation goes: after its last text node, or after the inline elements
+   *  that node ends (so a sentence ending in a link gets its translation after the link).
+   *  It stays inside an element laid out as a flex or grid item, which would otherwise put
+   *  the translation beside it as an item of its own. */
+  private runEnd(node: Text): Node {
+    let end: Node = node;
+    for (let parent = end.parentElement; parent && INLINE_TAGS.has(parent.tagName.toUpperCase()); parent = parent.parentElement) {
+      if (!isLastContent(end) || this.laysOutItems(parent.parentElement)) break;
+      end = parent;
+    }
+    return end;
   }
 
   private observe(): void {
@@ -516,16 +543,6 @@ function insideSkipped(el: Element | null): boolean {
   return false;
 }
 
-/** Where a run's translation goes: after its last text node, or after the inline elements
- *  that node ends (so a sentence ending in a link gets its translation after the link). */
-function runEnd(node: Text): Node {
-  let end: Node = node;
-  for (let parent = end.parentElement; parent && INLINE_TAGS.has(parent.tagName.toUpperCase()); parent = parent.parentElement) {
-    if (!isLastContent(end)) break;
-    end = parent;
-  }
-  return end;
-}
 
 function isLastContent(node: Node): boolean {
   for (let next = node.nextSibling; next; next = next.nextSibling) {
