@@ -2,6 +2,7 @@
 // originals so the page can be put back.
 import type { ContentRequest, ContentStatus, PageState, TranslateBatchResponse } from '@/lib/messages';
 import { getSettings, type Settings } from '@/lib/storage';
+import { takeBatch } from '@/lib/schedule';
 import { hasJapanese, planInline, planLines, type Plan } from '@/lib/text';
 
 /** Not translated, nor looked into. */
@@ -17,8 +18,9 @@ const INLINE_TAGS = new Set([
   'VAR', 'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'RT', 'RP', 'SVG',
 ]);
 const ATTRIBUTES = ['title', 'alt', 'placeholder', 'aria-label'];
-const BATCH_LINES = 150;
-const BATCH_CHARS = 5000;
+const BATCH_LIMITS = { lines: 150, chars: 5000 };
+/** How far beyond the top and bottom of the screen text counts as on screen, in screen heights. */
+const SCREEN_MARGIN = 0.25;
 
 interface Unit {
   /** Current value in the page. */
@@ -36,6 +38,12 @@ interface Job {
   units: Unit[];
   /** Line by line, for preformatted text and attributes. */
   lines: boolean;
+}
+
+interface Planned {
+  job: Job;
+  plan: Plan;
+  chars: number;
 }
 
 export default defineContentScript({
@@ -81,7 +89,14 @@ class PageTranslator {
   private observer?: MutationObserver;
   private dirty = new Set<Node>();
   private flushTimer?: ReturnType<typeof setTimeout>;
-  private queue: Promise<void> = Promise.resolve();
+  /** Jobs waiting for the engine, in document order; later page changes come at the end. */
+  private pending: Planned[] = [];
+  private pump?: Promise<void>;
+  /** Where the pending jobs are, so whatever is on screen is translated next. */
+  private viewport?: IntersectionObserver;
+  private onScreen = new Set<Element>();
+  /** Pending jobs per watched element. */
+  private watched = new Map<Element, number>();
   private preCache = new WeakMap<Element, boolean>();
 
   status(): ContentStatus {
@@ -103,8 +118,7 @@ class PageTranslator {
     const generation = this.generation;
     this.settings = await getSettings();
     if (generation !== this.generation) return;
-    const jobs = sortByViewport(this.collect(document.documentElement));
-    await this.enqueue(jobs, generation);
+    await this.enqueue(this.collect(document.documentElement), generation);
     if (generation !== this.generation) return;
     this.setState('translated');
     if (this.settings.observeMutations) this.observe();
@@ -116,6 +130,8 @@ class PageTranslator {
     this.observer = undefined;
     clearTimeout(this.flushTimer);
     this.dirty.clear();
+    this.dropPending();
+    this.pump = undefined;
     const units = [...this.texts.values(), ...[...this.attrs.values()].flatMap((m) => [...m.values()])];
     for (const unit of units) {
       if (unit.written !== undefined && unit.read() === unit.written) unit.write(unit.original);
@@ -231,39 +247,99 @@ class PageTranslator {
     return out;
   }
 
-  /** Batches run one after another; a restore in between drops the rest. */
+  /** Adds jobs to the pending work; the promise settles once none is left. */
   private enqueue(jobs: Job[], generation: number): Promise<void> {
     this.total += jobs.length;
-    const run = this.queue.then(() => this.run(jobs, generation));
-    this.queue = run.catch(() => {});
-    return run;
+    for (const job of jobs) {
+      const values = job.units.map((u) => u.original);
+      const plan = job.lines ? planLines(values) : planInline(values);
+      this.pending.push({ job, plan, chars: plan.lines.reduce((n, line) => n + line.length, 0) });
+      this.watch(job);
+    }
+    if (!this.pump) {
+      const pump = this.run(generation).finally(() => {
+        if (this.pump === pump) this.pump = undefined;
+      });
+      this.pump = pump;
+    }
+    return this.pump;
   }
 
-  private async run(jobs: Job[], generation: number): Promise<void> {
-    const planned = jobs.map((job) => {
-      const values = job.units.map((u) => u.original);
-      return { job, plan: job.lines ? planLines(values) : planInline(values) };
-    });
-    for (const batch of batches(planned)) {
-      if (generation !== this.generation) return;
+  /** Batches run one after another, each picked when the previous one is done; a restore
+   *  in between drops the rest. */
+  private async run(generation: number): Promise<void> {
+    while (this.pending.length && generation === this.generation) {
+      const { batch, rest } = takeBatch(
+        this.pending,
+        (p) => ({ lines: p.plan.lines.length, chars: p.chars }),
+        (p) => this.isOnScreen(p.job),
+        BATCH_LIMITS,
+      );
+      this.pending = rest;
+      for (const item of batch) this.unwatch(item.job);
       const out = await this.request(batch.flatMap((p) => p.plan.lines));
-      if (generation !== this.generation || !out) return;
+      if (generation !== this.generation) return;
+      if (!out) return this.dropPending();
       // A run whose output cannot be mapped back to its nodes is retried node by node.
-      const retry: typeof planned = [];
+      const retry: Planned[] = [];
       let i = 0;
       for (const item of batch) {
         const values = item.plan.apply(out.slice(i, (i += item.plan.lines.length)));
         if (values) this.write(item.job, values);
-        else retry.push({ job: item.job, plan: planLines(item.job.units.map((u) => u.original)) });
+        else retry.push({ job: item.job, plan: planLines(item.job.units.map((u) => u.original)), chars: item.chars });
       }
       if (retry.length) {
         const again = await this.request(retry.flatMap((p) => p.plan.lines));
-        if (generation !== this.generation || !again) return;
+        if (generation !== this.generation) return;
+        if (!again) return this.dropPending();
         let j = 0;
         for (const item of retry) this.write(item.job, item.plan.apply(again.slice(j, (j += item.plan.lines.length)))!);
       }
       this.done += batch.length;
     }
+  }
+
+  private dropPending(): void {
+    this.pending = [];
+    this.viewport?.disconnect();
+    this.viewport = undefined;
+    this.onScreen.clear();
+    this.watched.clear();
+  }
+
+  private isOnScreen(job: Job): boolean {
+    const el = job.units[0]?.element;
+    return !!el && this.onScreen.has(el);
+  }
+
+  private watch(job: Job): void {
+    const el = job.units[0]?.element;
+    if (!el) return;
+    const count = this.watched.get(el) ?? 0;
+    this.watched.set(el, count + 1);
+    if (count) return;
+    // The observer first reports on the next frame; until then the box is measured here.
+    if (inView(el)) this.onScreen.add(el);
+    this.viewport ??= new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && this.watched.has(entry.target)) this.onScreen.add(entry.target);
+          else this.onScreen.delete(entry.target);
+        }
+      },
+      { rootMargin: `${SCREEN_MARGIN * 100}% 0px` },
+    );
+    this.viewport.observe(el);
+  }
+
+  private unwatch(job: Job): void {
+    const el = job.units[0]?.element;
+    const count = el && this.watched.get(el);
+    if (!el || !count) return;
+    if (count > 1) return void this.watched.set(el, count - 1);
+    this.watched.delete(el);
+    this.onScreen.delete(el);
+    this.viewport?.unobserve(el);
   }
 
   private async request(lines: string[]): Promise<string[] | undefined> {
@@ -342,40 +418,9 @@ function blockOf(node: Node): Element | null {
   return el;
 }
 
-function* batches<T extends { plan: Plan }>(items: T[]): Generator<T[]> {
-  let batch: T[] = [];
-  let lines = 0;
-  let chars = 0;
-  for (const item of items) {
-    if (batch.length && (lines + item.plan.lines.length > BATCH_LINES || chars > BATCH_CHARS)) {
-      yield batch;
-      batch = [];
-      lines = chars = 0;
-    }
-    batch.push(item);
-    lines += item.plan.lines.length;
-    chars += item.plan.lines.reduce((n, line) => n + line.length, 0);
-  }
-  if (batch.length) yield batch;
-}
-
-/** Visible jobs first, then the rest in document order. */
-function sortByViewport(jobs: Job[]): Job[] {
-  const height = window.innerHeight;
-  const visible: Job[] = [];
-  const rest: Job[] = [];
-  const cache = new Map<Element, boolean>();
-  for (const job of jobs) {
-    const el = job.units[0]?.element;
-    let inView = false;
-    if (el) {
-      if (!cache.has(el)) {
-        const rect = el.getBoundingClientRect();
-        cache.set(el, rect.bottom > 0 && rect.top < height && rect.width > 0);
-      }
-      inView = cache.get(el)!;
-    }
-    (inView ? visible : rest).push(job);
-  }
-  return [...visible, ...rest];
+/** Whether the element's box is on screen, give or take SCREEN_MARGIN. */
+function inView(el: Element): boolean {
+  const rect = el.getBoundingClientRect();
+  const margin = window.innerHeight * SCREEN_MARGIN;
+  return rect.width > 0 && rect.bottom > -margin && rect.top < window.innerHeight + margin;
 }
