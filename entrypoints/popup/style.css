@@ -1,7 +1,9 @@
 body { width: 300px; }
 main { padding: 14px; display: grid; gap: 10px; }
-header { display: flex; align-items: baseline; justify-content: space-between; }
-h1 { font-size: 15px; margin: 0; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+h1 { font-size: 15px; margin: 0; white-space: nowrap; }
+/* A long host name is cut short instead of pushing the title onto two lines. */
+header .muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .progress { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
 .progress > div { height: 100%; background: var(--accent); transition: width 0.2s; }
