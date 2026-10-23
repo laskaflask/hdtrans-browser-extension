@@ -23,3 +23,11 @@ node docs/store/source/compose.mjs /tmp/hdtrans-shots public/icon docs/store/scr
 
 `capture.mjs`는 빌드를 임시 폴더에 복사해 예시 호스트 접근 권한만 더한 뒤 씁니다(브라우저 자동화로는 `activeTab`을 줄 수
 없음). 다른 Chromium을 쓰려면 `CHROMIUM` 환경 변수에 실행 파일 경로를 넣습니다.
+
+## 프로모션 이미지
+
+`promo/small-promo-440x280.png`는 Chrome 웹 스토어의 작은 프로모션 타일(440×280)입니다. 아이콘을 바꾸면 다시 만듭니다.
+
+```sh
+node docs/store/source/promo.mjs public/icon docs/store/promo
+```
