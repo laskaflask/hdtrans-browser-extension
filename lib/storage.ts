@@ -10,12 +10,15 @@ export interface Settings {
   translateAttributes: boolean;
   /** Keep translating content added after the page was translated. */
   observeMutations: boolean;
+  /** Make text that is waiting to be translated pulse until it is. */
+  showProgress: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   speech: 'strict',
   translateAttributes: true,
   observeMutations: true,
+  showProgress: true,
 };
 
 // storage.local: dictionaries can outgrow storage.sync's per-item quota.

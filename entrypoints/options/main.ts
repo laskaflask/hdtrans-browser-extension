@@ -91,6 +91,16 @@ function settingsSection(settings: Settings): HTMLElement {
         }),
         '번역한 뒤 새로 나타나는 내용도 번역',
       ),
+      h(
+        'label',
+        {},
+        h('input', {
+          type: 'checkbox',
+          checked: settings.showProgress,
+          onchange: (e: Event) => update({ showProgress: (e.target as HTMLInputElement).checked }),
+        }),
+        '번역을 기다리는 문장을 깜빡여 표시',
+      ),
     ),
   );
 }

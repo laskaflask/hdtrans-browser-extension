@@ -21,6 +21,16 @@ const ATTRIBUTES = ['title', 'alt', 'placeholder', 'aria-label'];
 const BATCH_LIMITS = { lines: 150, chars: 5000 };
 /** How far beyond the top and bottom of the screen text counts as on screen, in screen heights. */
 const SCREEN_MARGIN = 0.25;
+/** Marks the elements of text waiting to be translated; they pulse until it is written. */
+const PENDING_ATTR = 'data-hdtrans-pending';
+const PENDING_STYLE = `
+@keyframes hdtrans-pending { 50% { opacity: 0.35; } }
+[${PENDING_ATTR}] { animation: hdtrans-pending 1.2s ease-in-out infinite; }
+[${PENDING_ATTR}] [${PENDING_ATTR}] { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  [${PENDING_ATTR}] { animation: none; opacity: 0.55; }
+  [${PENDING_ATTR}] [${PENDING_ATTR}] { opacity: 1; }
+}`;
 
 interface Unit {
   /** Current value in the page. */
@@ -38,6 +48,8 @@ interface Job {
   units: Unit[];
   /** Line by line, for preformatted text and attributes. */
   lines: boolean;
+  /** An attribute's value, not text shown in the page. */
+  attribute?: boolean;
 }
 
 interface Planned {
@@ -97,6 +109,9 @@ class PageTranslator {
   private onScreen = new Set<Element>();
   /** Pending jobs per watched element. */
   private watched = new Map<Element, number>();
+  /** Pending jobs per element marked with PENDING_ATTR. */
+  private marked = new Map<Element, number>();
+  private pendingStyle?: HTMLStyleElement;
   private preCache = new WeakMap<Element, boolean>();
 
   status(): ContentStatus {
@@ -174,7 +189,7 @@ class PageTranslator {
       if (tag === 'BR' || !inline) close();
       // Attributes are read even on skipped elements, so an <input>'s placeholder is translated.
       if (this.settings.translateAttributes && !optedOut(el)) {
-        for (const unit of this.attrUnits(el)) jobs.push({ units: [unit], lines: true });
+        for (const unit of this.attrUnits(el)) jobs.push({ units: [unit], lines: true, attribute: true });
       }
       if (skipElement(el)) return;
       if (el.shadowRoot) visit(el.shadowRoot);
@@ -255,6 +270,7 @@ class PageTranslator {
       const plan = job.lines ? planLines(values) : planInline(values);
       this.pending.push({ job, plan, chars: plan.lines.reduce((n, line) => n + line.length, 0) });
       this.watch(job);
+      this.mark(job);
     }
     if (!this.pump) {
       const pump = this.run(generation).finally(() => {
@@ -295,16 +311,58 @@ class PageTranslator {
         let j = 0;
         for (const item of retry) this.write(item.job, item.plan.apply(again.slice(j, (j += item.plan.lines.length)))!);
       }
+      for (const item of batch) this.unmark(item.job);
       this.done += batch.length;
     }
   }
 
   private dropPending(): void {
     this.pending = [];
+    for (const el of this.marked.keys()) el.removeAttribute(PENDING_ATTR);
+    this.marked.clear();
+    this.pendingStyle?.remove();
+    this.pendingStyle = undefined;
     this.viewport?.disconnect();
     this.viewport = undefined;
     this.onScreen.clear();
     this.watched.clear();
+  }
+
+  /** The elements holding a job's text; attributes are not shown, so they are not marked. */
+  private markTargets(job: Job): Set<Element> {
+    if (job.attribute || !this.settings.showProgress) return new Set();
+    return new Set(job.units.flatMap((u) => (u.element ? [u.element] : [])));
+  }
+
+  private mark(job: Job): void {
+    for (const el of this.markTargets(job)) {
+      const count = this.marked.get(el) ?? 0;
+      this.marked.set(el, count + 1);
+      if (count) continue;
+      el.setAttribute(PENDING_ATTR, '');
+      if (!this.pendingStyle?.isConnected) {
+        this.pendingStyle = document.createElement('style');
+        this.pendingStyle.textContent = PENDING_STYLE;
+        (document.head ?? document.documentElement).append(this.pendingStyle);
+      }
+    }
+  }
+
+  private unmark(job: Job): void {
+    for (const el of this.markTargets(job)) {
+      const count = this.marked.get(el);
+      if (!count) continue;
+      if (count > 1) {
+        this.marked.set(el, count - 1);
+        continue;
+      }
+      this.marked.delete(el);
+      el.removeAttribute(PENDING_ATTR);
+    }
+    if (!this.marked.size) {
+      this.pendingStyle?.remove();
+      this.pendingStyle = undefined;
+    }
   }
 
   private isOnScreen(job: Job): boolean {
