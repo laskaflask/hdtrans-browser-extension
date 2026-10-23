@@ -8,9 +8,17 @@
 # built from the tag of the installed package version: snapshots only load in the engine
 # build they were compiled with.
 #
-# Needs git, cmake, ninja and Emscripten (brew install emscripten ninja).
+# Needs git, cmake, ninja and Emscripten $EMSCRIPTEN_VERSION below, the version hdTrans's own CI
+# builds with (emsdk install/activate it; another version builds a different engine).
 # HDTRANS_SRC: git URL or local clone to build from (default: GitHub).
 set -euo pipefail
+
+EMSCRIPTEN_VERSION=4.0.22
+emcc_version=$(emcc --version | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+if [ "$emcc_version" != "$EMSCRIPTEN_VERSION" ]; then
+  echo "build-engine: needs Emscripten $EMSCRIPTEN_VERSION, found ${emcc_version:-none}" >&2
+  exit 1
+fi
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 version=$(node -p "require('$root/node_modules/hdtrans/package.json').version")
@@ -27,6 +35,8 @@ out="$root/vendor/hdtrans"
 mkdir -p "$out"
 cp "$work/build/hdtrans_engine.js" "$work/build/hdtrans_engine.wasm" "$out/"
 printf '%s\n' "$version" > "$out/VERSION"
+printf 'hdTrans v%s, Emscripten %s, -sDYNAMIC_EXECUTION=0 (scripts/build-engine.sh)\n' \
+  "$version" "$emcc_version" > "$out/BUILD.txt"
 if grep -q -E 'new Function|eval\(' "$out/hdtrans_engine.js"; then
   echo "build-engine: hdtrans_engine.js still generates code at run time" >&2
   exit 1

@@ -67,13 +67,36 @@ hdTrans 소스를 `-sDYNAMIC_EXECUTION=0`으로 다시 빌드한 엔진을 `vend
 | `runtime.js`, `dicts.hdsnap`(약 37MB), `dicts.txt` | npm `hdtrans` 패키지 |
 
 사전 스냅숏은 같은 소스로 빌드한 엔진에서만 열리므로, `hdtrans` 버전을 올리면 엔진도 다시 빌드합니다.
+엔진은 hdTrans CI와 같은 Emscripten 4.0.22로만 빌드하며(스크립트가 버전을 확인), 같은 버전이면 몇 번을 빌드해도
+같은 파일이 나옵니다. 빌드 정보는 `vendor/hdtrans/BUILD.txt`에 남습니다.
 
 ```sh
-brew install emscripten ninja
+brew install cmake ninja
+git clone https://github.com/emscripten-core/emsdk.git && emsdk/emsdk install 4.0.22 && emsdk/emsdk activate 4.0.22
+source emsdk/emsdk_env.sh
 npm install hdtrans@<버전>
 npm run build:engine     # GitHub의 v<버전> 태그를 빌드. 로컬 클론은 HDTRANS_SRC=경로
 npm test                 # 엔진에 동적 코드가 없는지, 패키지와 버전이 같은지 확인
 ```
+
+### Firefox 애드온(AMO) 제출용 소스
+
+AMO는 번들·압축한 코드의 원본과, 검토자가 같은 결과물을 다시 만들 수 있는 빌드 방법을 요구합니다.
+`npm run zip:firefox`가 만드는 `.output/hdtrans-browser-extension-<버전>-sources.zip`을 소스로 올립니다.
+
+- 환경: Node.js 22 이상, npm 11. 운영체제는 상관없습니다. macOS(Node 23)와 Node 24.22·npm 11.21에서 빌드한
+  결과물이 바이트 단위로 같음을 확인했습니다.
+- 빌드: 소스 압축을 푼 폴더에서 아래를 실행하면 `.output/firefox-mv3/`가 제출한 확장과 같게 나옵니다.
+
+  ```sh
+  npm ci
+  npm run build:firefox
+  ```
+
+- 미리 빌드된 파일: `vendor/hdtrans/hdtrans_engine.js`, `hdtrans_engine.wasm`은 hdTrans(AGPL) v<버전> 태그를
+  위 [엔진](#엔진) 절차(`scripts/build-engine.sh`, Emscripten 4.0.22)로 빌드한 것이며, 같은 절차로 다시 만들 수
+  있습니다. `runtime.js`와 사전(`dicts.hdsnap`, `dicts.txt`)은 npm `hdtrans` 패키지 파일을 고치지 않고 그대로
+  복사합니다(`package-lock.json`에 버전과 무결성 값이 있음).
 
 ## 구조
 
