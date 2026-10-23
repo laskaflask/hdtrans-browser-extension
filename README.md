@@ -106,3 +106,7 @@ npm test                 # 엔진에 동적 코드가 없는지, 패키지와 �
 ## 라이선스
 
 hdTrans가 AGPL-3.0-or-later이므로 이 확장도 같은 라이선스를 따릅니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참고하세요.
+
+빌드 결과물에는 `LICENSE.txt`, 이 확장에 포함된 제3자 소프트웨어 고지([THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)),
+hdTrans 패키지의 고지(`hdtrans/THIRD-PARTY-NOTICES.txt`)가 함께 들어가고, 설정 페이지 아래에 라이선스와 소스 저장소 링크가
+있습니다. 번들에 들어가는 npm 패키지가 바뀌면 `THIRD-PARTY-NOTICES.txt`도 고칩니다.

@@ -31,3 +31,5 @@ textarea { width: 100%; min-height: 140px; font-family: ui-monospace, Menlo, mon
 details summary { cursor: pointer; color: var(--muted); }
 .empty { padding: 40px 16px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 10px; }
 .status { min-height: 1.5em; }
+.license { font-size: 12px; }
+.license a { color: var(--accent); }

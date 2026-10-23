@@ -24,6 +24,8 @@ const PATTERN_HINTS: Record<MatchType, string> = {
   regex: '예: ^https://example\\.jp/(news|blog)/',
 };
 
+const SOURCE_URL = 'https://github.com/laskaflask/hdtrans-browser-extension';
+
 const app = document.getElementById('app')!;
 
 let rules: DictRule[] = [];
@@ -479,6 +481,21 @@ function renderDicts(): void {
   renderStatus();
 }
 
+// AGPL: users of the extension get the license and where its source is.
+function licenseFooter(): HTMLElement {
+  const link = (href: string, text: string) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
+  return h(
+    'footer',
+    { class: 'license muted' },
+    'GNU AGPL v3 이상으로 배포합니다. ',
+    link('/LICENSE.txt', '라이선스'),
+    ' · ',
+    link('/THIRD-PARTY-NOTICES.txt', '제3자 고지'),
+    ' · ',
+    link(SOURCE_URL, '소스 코드'),
+  );
+}
+
 async function main(): Promise<void> {
   const settings = await getSettings();
   rules = await dictRulesItem.getValue();
@@ -504,6 +521,7 @@ async function main(): Promise<void> {
     settingsSection(settings),
     dictsRoot,
     h('datalist', { id: 'pos-list' }, POS.map((p) => h('option', { value: p }))),
+    licenseFooter(),
   );
   renderDicts();
 
