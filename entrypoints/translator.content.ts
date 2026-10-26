@@ -324,9 +324,11 @@ class PageTranslator {
   private enqueue(jobs: Job[], generation: number): Promise<void> {
     this.total += jobs.length;
     for (const job of jobs) {
-      const values = job.units.filter((u) => !u.reading).map((u) => u.original);
+      const shown = job.units.filter((u) => !u.reading);
+      const values = shown.map((u) => u.original);
       const readings = job.units.filter((u) => u.reading).map((u) => u.original);
-      const text = job.lines ? planLines(values) : planInline(values);
+      const bases = shown.map((u) => !!u.node && !!readingOf(u.node));
+      const text = job.lines ? planLines(values) : planInline(values, bases);
       const plan = readings.length ? planBoth(text, planLines(readings)) : text;
       this.pending.push({ job, plan, chars: plan.lines.reduce((n, line) => n + line.length, 0) });
       this.watch(job);
@@ -356,20 +358,28 @@ class PageTranslator {
       const out = await this.request(batch.flatMap((p) => p.plan.lines));
       if (generation !== this.generation) return;
       if (!out) return this.dropPending();
-      // A run whose output cannot be mapped back to its nodes is retried node by node.
-      const retry: Planned[] = [];
-      let i = 0;
-      for (const item of batch) {
-        const values = item.plan.apply(out.slice(i, (i += item.plan.lines.length)));
-        if (values) this.write(item.job, values);
-        else retry.push({ job: item.job, plan: planLines(item.job.units.map((u) => u.original)), chars: item.chars });
-      }
-      if (retry.length) {
+      // A run whose output cannot be mapped back to its nodes goes again as its plan says, and
+      // node by node in the end.
+      let sent = batch;
+      let lines = out;
+      while (sent.length) {
+        const retry: Planned[] = [];
+        let i = 0;
+        for (const item of sent) {
+          const part = lines.slice(i, (i += item.plan.lines.length));
+          const values = item.plan.apply(part);
+          if (values) this.write(item.job, values);
+          else {
+            const plan = item.plan.retry?.(part) ?? planLines(item.job.units.map((u) => u.original));
+            retry.push({ job: item.job, plan, chars: item.chars });
+          }
+        }
+        if (!retry.length) break;
         const again = await this.request(retry.flatMap((p) => p.plan.lines));
         if (generation !== this.generation) return;
         if (!again) return this.dropPending();
-        let j = 0;
-        for (const item of retry) this.write(item.job, item.plan.apply(again.slice(j, (j += item.plan.lines.length)))!);
+        sent = retry;
+        lines = again;
       }
       for (const item of batch) this.unmark(item.job);
       this.done += batch.length;
@@ -475,9 +485,10 @@ class PageTranslator {
     return undefined;
   }
 
-  private write(job: Job, values: string[]): void {
+  private write(job: Job, translated: string[]): void {
     // Leave the run alone if the page changed any of it while the batch was out.
     if (job.units.some((u) => u.read() !== u.original)) return;
+    const values = withoutJoinedReadings(job.units, translated);
     if (this.settings.bilingual && !job.attribute) return this.writeAfter(job, values);
     job.units.forEach((unit, k) => {
       const value = values[k] ?? unit.original;
@@ -613,6 +624,21 @@ function readingOf(node: Node): Element | undefined {
     if (tag !== 'RP') return undefined;
   }
   return undefined;
+}
+
+/** The values with the readings left out whose ruby base was translated together with the
+ *  text next to it (弄 with ぶ, as one word): a node emptied because its text went to the node
+ *  before it, when the two do not share a reading. */
+function withoutJoinedReadings(units: readonly Unit[], values: readonly string[]): string[] {
+  const joined = new Set<Element | undefined>();
+  let prev: Element | undefined | null = null;
+  units.forEach((unit, k) => {
+    if (unit.reading || !unit.original.trim()) return;
+    const rt = unit.node && readingOf(unit.node);
+    if (prev !== null && rt !== prev && !(values[k] ?? unit.original).trim()) joined.add(rt).add(prev);
+    prev = rt;
+  });
+  return values.map((v, k) => (units[k]!.reading && joined.has(units[k]!.reading) ? '' : v));
 }
 
 /** A run's translated text for the translation element, with each ruby base given its

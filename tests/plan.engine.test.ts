@@ -21,9 +21,15 @@ beforeAll(async () => {
   engine = await Engine.load(files);
 });
 
+/** Sends the plan and the plans it retries with, as the content script does. */
 function run(plan: Plan): string[] | undefined {
-  const res = engine.handle({ type: 'translate', lines: plan.lines, userDict: '', speech: 'strict' });
-  return plan.apply(res.lines ?? []);
+  for (let p: Plan | undefined = plan; p; ) {
+    const out: string[] = engine.handle({ type: 'translate', lines: p.lines, userDict: '', speech: 'strict' }).lines ?? [];
+    const values = p.apply(out);
+    if (values) return values;
+    p = p.retry?.(out);
+  }
+  return undefined;
 }
 
 describe('shipped engine', () => {
@@ -57,6 +63,11 @@ describe('plans with the engine', () => {
     const letters = [...'そういうストーリー'];
     expect(run(planInline(['これは、', ...letters, 'なのだ。']))).toEqual(['이것은, ', '그런 스토리', ...letters.slice(1).map(() => ''), '다.']);
     expect(run(planInline([...'ストーリー']))).toEqual(['스토리', '', '', '', '']);
+  });
+
+  it('translates a word split by a ruby base as one word', () => {
+    expect(run(planInline(['弄', 'ぶように命を摘み取る。'], [true, false]))).toEqual(['희롱하도록 생명을 딴다.', '']);
+    expect(run(planInline(['ユキさんは', '弄', 'ぶように', '魔導具', 'を使った。'], [false, true, false, true, false]))).toEqual(['유키 씨는 ', '희롱하도록 ', '', '마도구', '를 썼다.']);
   });
 
   it('keeps whitespace-only and surrounding whitespace of nodes', () => {
