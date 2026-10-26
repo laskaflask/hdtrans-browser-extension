@@ -125,6 +125,7 @@ class PageTranslator {
   private pendingStyle?: HTMLStyleElement;
   private preCache = new WeakMap<Element, boolean>();
   private itemsCache = new WeakMap<Element, boolean>();
+  private outOfFlowCache = new WeakMap<Element, boolean>();
 
   status(): ContentStatus {
     return {
@@ -246,6 +247,18 @@ class PageTranslator {
       this.itemsCache.set(el, items);
     }
     return items;
+  }
+
+  /** An absolutely or fixed positioned element is a box of its own, often one clipped to hide
+   *  text for screen readers, so a translation placed outside it shows up elsewhere. */
+  private outOfFlow(el: Element): boolean {
+    let out = this.outOfFlowCache.get(el);
+    if (out === undefined) {
+      const position = getComputedStyle(el).position;
+      out = position === 'absolute' || position === 'fixed';
+      this.outOfFlowCache.set(el, out);
+    }
+    return out;
   }
 
   private isPre(el: Element | null): boolean {
@@ -473,7 +486,8 @@ class PageTranslator {
       unit.translation?.remove();
       unit.translation = undefined;
     }
-    const last = job.units.at(-1)?.node;
+    // After the last text with content, not trailing whitespace that may sit outside its element.
+    const last = (job.units.findLast((u) => u.original.trim()) ?? job.units.at(-1))?.node;
     if (!text.trim() || text === original.trim() || !last?.parentNode) return;
     const el = document.createElement(TRANSLATION_TAG);
     el.lang = 'ko';
@@ -489,11 +503,12 @@ class PageTranslator {
   /** Where a run's translation goes: after its last text node, or after the inline elements
    *  that node ends (so a sentence ending in a link gets its translation after the link).
    *  It stays inside an element laid out as a flex or grid item, which would otherwise put
-   *  the translation beside it as an item of its own. */
+   *  the translation beside it as an item of its own, and inside a positioned element (text
+   *  hidden for screen readers keeps its translation hidden too). */
   private runEnd(node: Text): Node {
     let end: Node = node;
     for (let parent = end.parentElement; parent && INLINE_TAGS.has(parent.tagName.toUpperCase()); parent = parent.parentElement) {
-      if (!isLastContent(end) || this.laysOutItems(parent.parentElement)) break;
+      if (!isLastContent(end) || this.laysOutItems(parent.parentElement) || this.outOfFlow(parent)) break;
       end = parent;
     }
     return end;
