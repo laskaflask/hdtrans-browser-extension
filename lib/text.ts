@@ -63,6 +63,18 @@ export function planLines(values: readonly string[]): Plan {
   };
 }
 
+/** Two plans sent as one: the values of `first`, then those of `second`. */
+export function planBoth(first: Plan, second: Plan): Plan {
+  return {
+    lines: [...first.lines, ...second.lines],
+    apply(out) {
+      const a = first.apply(out.slice(0, first.lines.length));
+      const b = second.apply(out.slice(first.lines.length));
+      return a && b && [...a, ...b];
+    },
+  };
+}
+
 /** The text nodes of one inline run (a sentence split by <b>, <a>, ...) translated together,
  *  so particles and word order follow the whole sentence. */
 export function planInline(values: readonly string[]): Plan {

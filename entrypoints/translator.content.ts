@@ -3,12 +3,12 @@
 import type { ContentRequest, ContentStatus, PageState, TranslateBatchResponse } from '@/lib/messages';
 import { getSettings, settingsItem, type Settings } from '@/lib/storage';
 import { takeBatch } from '@/lib/schedule';
-import { hasJapanese, planInline, planLines, type Plan } from '@/lib/text';
+import { hasJapanese, planBoth, planInline, planLines, type Plan } from '@/lib/text';
 
 /** Not translated, nor looked into. */
 const SKIP_TAGS = new Set([
   'HDTRANS-TRANSLATION', 'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'INPUT', 'SELECT', 'OPTION', 'CODE', 'KBD', 'SAMP', 'VAR',
-  'SVG', 'MATH', 'CANVAS', 'IFRAME', 'TEMPLATE', 'RT', 'RP',
+  'SVG', 'MATH', 'CANVAS', 'IFRAME', 'TEMPLATE', 'RP',
 ]);
 /** Elements that stay within a line of text; a sentence may run across them. Skipped ones
  *  among them (code, svg, ...) are a boundary inside the sentence, not a break. */
@@ -49,6 +49,9 @@ interface Unit {
   written?: string;
   /** The text node, for text units. */
   node?: Text;
+  /** The <rt> holding the text, for a ruby reading. Readings come after the run's other
+   *  units and are translated on their own lines, not as part of the sentence. */
+  reading?: Element;
   /** The translation shown after the original text, when both are shown. */
   translation?: Element;
 }
@@ -189,9 +192,11 @@ class PageTranslator {
     if (insideSkipped(root.parentElement)) return [];
     const jobs: Job[] = [];
     let run: Text[] = [];
+    let readings: Text[] = [];
     const close = () => {
-      if (run.length) jobs.push(...this.runJobs(run));
+      if (run.length || readings.length) jobs.push(...this.runJobs(run, readings));
       run = [];
+      readings = [];
     };
     const visit = (node: Node): void => {
       if (node.nodeType === Node.TEXT_NODE) {
@@ -214,6 +219,7 @@ class PageTranslator {
         for (const unit of this.attrUnits(el)) jobs.push({ units: [unit], lines: true, attribute: true });
       }
       if (skipElement(el)) return;
+      if (tag === 'RT') return void readings.push(...textsOf(el));
       if (el.shadowRoot) visit(el.shadowRoot);
       for (let child = el.firstChild; child; child = child.nextSibling) visit(child);
       if (!inline) close();
@@ -224,15 +230,16 @@ class PageTranslator {
   }
 
   /** Jobs for one inline run of text nodes; only runs with Japanese still to translate count. */
-  private runJobs(nodes: Text[]): Job[] {
-    let fresh = nodes.filter((n) => {
+  private runJobs(nodes: Text[], readings: Text[]): Job[] {
+    const all = [...nodes, ...readings];
+    let fresh = all.filter((n) => {
       const known = this.texts.get(n);
       return !known || n.nodeValue !== known.written;
     });
     // Shown with its translation, the whole run is still original, so it is translated again whole.
-    if (this.settings.bilingual && fresh.length) fresh = nodes;
+    if (this.settings.bilingual && fresh.length) fresh = all;
     if (!fresh.some((n) => hasJapanese(n.nodeValue ?? ''))) return [];
-    const units = fresh.map((n) => this.textUnit(n));
+    const units = fresh.map((n) => this.textUnit(n, readings.includes(n) ? n.parentElement?.closest('rt') : undefined));
     return [{ units, lines: this.isPre(blockOf(fresh[0]!)) }];
   }
 
@@ -272,7 +279,7 @@ class PageTranslator {
     return pre;
   }
 
-  private textUnit(node: Text): Unit {
+  private textUnit(node: Text, reading?: Element | null): Unit {
     const value = node.nodeValue ?? '';
     const unit: Unit = this.texts.get(node) ?? {
       original: value,
@@ -285,6 +292,7 @@ class PageTranslator {
     };
     unit.original = value;
     unit.written = undefined;
+    unit.reading = reading ?? undefined;
     this.texts.set(node, unit);
     return unit;
   }
@@ -316,8 +324,10 @@ class PageTranslator {
   private enqueue(jobs: Job[], generation: number): Promise<void> {
     this.total += jobs.length;
     for (const job of jobs) {
-      const values = job.units.map((u) => u.original);
-      const plan = job.lines ? planLines(values) : planInline(values);
+      const values = job.units.filter((u) => !u.reading).map((u) => u.original);
+      const readings = job.units.filter((u) => u.reading).map((u) => u.original);
+      const text = job.lines ? planLines(values) : planInline(values);
+      const plan = readings.length ? planBoth(text, planLines(readings)) : text;
       this.pending.push({ job, plan, chars: plan.lines.reduce((n, line) => n + line.length, 0) });
       this.watch(job);
       this.mark(job);
@@ -478,8 +488,13 @@ class PageTranslator {
 
   /** Leaves the original as it is and shows the translation after it. */
   private writeAfter(job: Job, values: string[]): void {
-    const original = job.units.map((u) => u.original).join('');
-    const joined = job.units.map((u, k) => values[k] ?? u.original).join('');
+    const shown = job.units.flatMap((unit, k) => (unit.reading ? [] : [{ unit, value: values[k] ?? unit.original }]));
+    const readings = new Map<Element, string>();
+    job.units.forEach((unit, k) => {
+      if (unit.reading) readings.set(unit.reading, (readings.get(unit.reading) ?? '') + (values[k] ?? unit.original));
+    });
+    const original = shown.map((s) => s.unit.original).join('');
+    const joined = shown.map((s) => s.value).join('');
     const text = job.lines ? joined.replace(/^\s*\n|\n\s*$/g, '') : joined.replace(/\s+/g, ' ').trim();
     for (const unit of job.units) {
       unit.written = unit.original;
@@ -487,14 +502,13 @@ class PageTranslator {
       unit.translation = undefined;
     }
     // After the last text with content, not trailing whitespace that may sit outside its element.
-    const last = (job.units.findLast((u) => u.original.trim()) ?? job.units.at(-1))?.node;
+    const last = (shown.findLast((s) => s.unit.original.trim()) ?? shown.at(-1))?.unit.node;
     if (!text.trim() || text === original.trim() || !last?.parentNode) return;
     const el = document.createElement(TRANSLATION_TAG);
     el.lang = 'ko';
     const label = original.trim();
     const short = !job.lines && label.length <= SHORT_TEXT && !SENTENCE_END.test(label);
-    if (short) el.textContent = ` ${text}`;
-    else el.append(document.createElement('br'), text);
+    el.append(short ? ' ' : document.createElement('br'), ...withReadings(shown, readings, job.lines));
     const anchor = this.runEnd(last);
     anchor.parentNode!.insertBefore(el, anchor.nextSibling);
     for (const unit of job.units) unit.translation = el;
@@ -559,13 +573,77 @@ function insideSkipped(el: Element | null): boolean {
 }
 
 
+/** Whether nothing but whitespace, comments and ruby readings follows the node. */
 function isLastContent(node: Node): boolean {
   for (let next = node.nextSibling; next; next = next.nextSibling) {
     if (next.nodeType === Node.TEXT_NODE && !next.nodeValue?.trim()) continue;
     if (next.nodeType === Node.COMMENT_NODE) continue;
+    if (next.nodeType === Node.ELEMENT_NODE && /^(RT|RP)$/i.test((next as Element).tagName)) continue;
     return false;
   }
   return true;
+}
+
+/** The text under el, as the run visits it. */
+function textsOf(el: Element): Text[] {
+  const out: Text[] = [];
+  for (let child = el.firstChild; child; child = child.nextSibling) {
+    if (child.nodeType === Node.TEXT_NODE) out.push(child as Text);
+    else if (child.nodeType === Node.ELEMENT_NODE && !skipElement(child as Element)) out.push(...textsOf(child as Element));
+  }
+  return out;
+}
+
+/** The <rt> giving the reading of a ruby base: the next one after the base in its <ruby>. */
+function readingOf(node: Node): Element | undefined {
+  let base = node;
+  for (let parent = base.parentElement; parent; base = parent, parent = parent.parentElement) {
+    const tag = parent.tagName.toUpperCase();
+    if (tag === 'RUBY') break;
+    if (!INLINE_TAGS.has(tag)) return undefined;
+  }
+  if (base.parentElement?.tagName.toUpperCase() !== 'RUBY') return undefined;
+  for (let next = base.nextSibling; next; next = next.nextSibling) {
+    if (next.nodeType !== Node.ELEMENT_NODE) {
+      if (next.nodeValue?.trim()) return undefined;
+      continue;
+    }
+    const tag = (next as Element).tagName.toUpperCase();
+    if (tag === 'RT') return next as Element;
+    if (tag !== 'RP') return undefined;
+  }
+  return undefined;
+}
+
+/** A run's translated text for the translation element, with each ruby base given its
+ *  translated reading again. */
+function withReadings(
+  shown: readonly { unit: Unit; value: string }[],
+  readings: ReadonlyMap<Element, string>,
+  lines: boolean,
+): Node[] {
+  const groups: { text: string; reading?: string; rt?: Element }[] = [];
+  for (const { unit, value } of shown) {
+    const rt = unit.node && readingOf(unit.node);
+    const reading = rt && readings.get(rt);
+    const prev = groups.at(-1);
+    // Text nodes of one base (<rb>漢<b>字</b></rb>) share its reading.
+    if (prev && prev.rt === rt) prev.text += value;
+    else groups.push({ text: value, ...(reading && { reading, rt }) });
+  }
+  const tidy = (s: string) => (lines ? s : s.replace(/\s+/g, ' '));
+  const first = groups[0];
+  const last = groups.at(-1);
+  if (first) first.text = lines ? first.text.replace(/^\s*\n/, '') : first.text.trimStart();
+  if (last) last.text = lines ? last.text.replace(/\n\s*$/, '') : last.text.trimEnd();
+  return groups.map((g) => {
+    if (!g.reading) return document.createTextNode(tidy(g.text));
+    const ruby = document.createElement('ruby');
+    const rt = document.createElement('rt');
+    rt.textContent = g.reading.trim();
+    ruby.append(tidy(g.text), rt);
+    return ruby;
+  });
 }
 
 /** The nearest ancestor that is not inline: it decides whether whitespace is preformatted. */
