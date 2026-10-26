@@ -53,6 +53,12 @@ describe('plans with the engine', () => {
     expect(run(planInline(['詳しくは', 'こちら', 'をご覧ください。']))).toEqual(['자세하게는 ', '이쪽', '을 봐 주세요.']);
   });
 
+  it('translates a word with one node per letter as a word', () => {
+    const letters = [...'そういうストーリー'];
+    expect(run(planInline(['これは、', ...letters, 'なのだ。']))).toEqual(['이것은, ', '그런 스토리', ...letters.slice(1).map(() => ''), '다.']);
+    expect(run(planInline([...'ストーリー']))).toEqual(['스토리', '', '', '', '']);
+  });
+
   it('keeps whitespace-only and surrounding whitespace of nodes', () => {
     expect(run(planInline(['\n  今日は', ' ', 'いい天気ですね。\n']))).toEqual(['\n  오늘은', ' ', '좋은 날씨군요.\n']);
   });

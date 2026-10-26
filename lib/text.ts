@@ -83,16 +83,25 @@ export function planInline(values: readonly string[]): Plan {
     const p = piece(v);
     return { ...p, core: collapseBreaks(p.core) };
   });
-  const used = pieces.flatMap((p, i) => (p.core ? [i] : []));
-  if (used.length <= 1) {
-    const only = used[0];
-    const translate = only !== undefined && pieces[only]!.translate;
+  const groups = groupLetters(pieces);
+  const cores = groups.map((g) => g.map((i) => pieces[i]!.core).join(''));
+  // A group's text goes to its first node; the other nodes of the group are emptied.
+  const fill = (translated: readonly string[]) => {
+    const values = pieces.map((p) => p.lead + p.core + p.trail);
+    groups.forEach((group, k) => {
+      for (const index of group) values[index] = pieces[index]!.lead + pieces[index]!.trail;
+      const first = pieces[group[0]!]!;
+      values[group[0]!] = first.lead + translated[k]! + first.trail;
+    });
+    return values;
+  };
+  if (groups.length <= 1) {
+    const translate = groups.length === 1 && hasJapanese(cores[0]!);
     return {
-      lines: translate ? [pieces[only]!.core] : [],
-      apply: (out) => pieces.map((p, i) => p.lead + (translate && i === only ? (out[0] ?? p.core) : p.core) + p.trail),
+      lines: translate ? [cores[0]!] : [],
+      apply: (out) => (translate ? fill([out[0] ?? cores[0]!]) : pieces.map((p) => p.lead + p.core + p.trail)),
     };
   }
-  const cores = used.map((i) => pieces[i]!.core);
   return {
     // The marked line maps the output to the nodes; the plain one supplies the spacing.
     lines: [cores.join(MARK), cores.join('')],
@@ -100,18 +109,42 @@ export function planInline(values: readonly string[]): Plan {
       const parts = (out[0] ?? '').split(MARKS);
       if (parts.length !== cores.length) return undefined;
       const translated = projectSpacing(parts, out[1] ?? '') ?? parts.map((p) => p.trim());
-      const values = pieces.map((p) => p.lead + p.core + p.trail);
-      used.forEach((index, k) => {
-        const p = pieces[index]!;
-        const next = used[k + 1];
-        // The page already separates these two nodes; do not add a second space.
-        const spaced = next !== undefined && (p.trail !== '' || pieces.slice(index + 1, next + 1).some((q) => q.lead !== ''));
-        const text = spaced ? translated[k]!.trimEnd() : translated[k]!;
-        values[index] = p.lead + text + p.trail;
-      });
-      return values;
+      return fill(
+        groups.map((group, k) => {
+          const last = group[group.length - 1]!;
+          const next = groups[k + 1]?.[0];
+          // The page already separates these two nodes; do not add a second space.
+          const spaced =
+            next !== undefined && (pieces[last]!.trail !== '' || pieces.slice(last + 1, next + 1).some((q) => q.lead !== ''));
+          return spaced ? translated[k]!.trimEnd() : translated[k]!;
+        }),
+      );
     },
   };
+}
+
+/** The non-empty pieces in order, as groups of indices. Runs of two or more one-letter pieces
+ *  with nothing between them (a word with one <span> per letter, as for emphasis dots) form one
+ *  group, so the engine does not take each letter as a word of its own. */
+function groupLetters(pieces: readonly Piece[]): number[][] {
+  const letter = (p: Piece) => [...p.core].length === 1;
+  const groups: number[][] = [];
+  let prev: number | undefined;
+  pieces.forEach((p, i) => {
+    if (!p.core) return;
+    const last = groups[groups.length - 1];
+    const joined =
+      last !== undefined &&
+      prev === i - 1 &&
+      letter(pieces[prev]!) &&
+      letter(p) &&
+      pieces[prev]!.trail === '' &&
+      p.lead === '';
+    if (joined) last.push(i);
+    else groups.push([i]);
+    prev = i;
+  });
+  return groups;
 }
 
 /** Splits `plain` at the same places as `parts` when both hold the same characters apart from

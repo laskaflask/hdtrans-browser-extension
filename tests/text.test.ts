@@ -23,6 +23,12 @@ describe('planBoth', () => {
     expect(plan.apply(['――〈∥적명자∥〉.', '――〈적명자〉.', '그림 리퍼'])).toEqual(['――〈', '적명자', '〉.', '그림 리퍼']);
   });
 
+  it('sends a word with one node per letter as one part, written to its first node', () => {
+    const plan = planInline(['彼は', '本', '当', 'に', '来た。', '雨', ' ', '雪']);
+    expect(plan.lines).toEqual(['彼は‖本当に‖来た。‖雨‖雪', '彼は本当に来た。雨雪']);
+    expect(plan.apply(['그는∥정말로∥왔다.∥비∥눈', '그는 정말로 왔다. 비 눈'])).toEqual(['그는 ', '정말로 ', '', '', '왔다. ', '비', ' ', '눈']);
+  });
+
   it('cannot be applied when the first plan cannot', () => {
     const plan = planBoth(planInline(['今日は', '晴れ']), planLines(['はれ']));
     expect(plan.apply(['오늘은', '오늘은 맑음', '하레'])).toBeUndefined();
