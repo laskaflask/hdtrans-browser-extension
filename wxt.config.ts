@@ -25,6 +25,8 @@ export default defineConfig({
     description: 'hdTrans WebAssembly 엔진으로 일본어 웹 페이지를 한국어로 번역합니다. 번역은 모두 브라우저 안에서 합니다.',
     // Chrome hosts the engine in an offscreen document; Firefox in its background page.
     permissions: ['contextMenus', 'storage', 'activeTab', 'scripting', ...(browser === 'firefox' ? [] : ['offscreen'])],
+    // Nothing is asked at install. Sites the user chooses to translate automatically are requested one by one.
+    optional_host_permissions: ['http://*/*', 'https://*/*'],
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },

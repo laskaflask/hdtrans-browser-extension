@@ -14,7 +14,7 @@ Translates the Japanese text of the web page the user asks to translate into Kor
 ## 권한 사용 이유 (Permission justification)
 
 매니페스트의 권한마다 한 칸씩 있습니다. Chrome 빌드의 권한은 `activeTab`, `scripting`, `contextMenus`, `storage`,
-`offscreen`이며 호스트 권한은 없습니다.
+`offscreen`이며 필수 호스트 권한은 없습니다. 선택 호스트 권한(`optional_host_permissions`)만 따로 선언합니다.
 
 **activeTab**
 
@@ -26,6 +26,12 @@ Gives temporary access to the current tab only when the user starts a translatio
 
 ```text
 Injects the extension's own translation script (content-scripts/translator.js, packaged in the extension) into the tab the user asked to translate, using the access granted by activeTab. The script is not injected into any other page.
+```
+
+**Host permissions (optional: http://*/*, https://*/*)**
+
+```text
+Nothing is granted at install. Only when the user turns on "always translate this site" in the popup does the extension request access to that one site (and its subdomains), so that its Japanese pages can be translated automatically when they load. The user can revoke it at any time in the browser, and turning the option off returns it. The extension never asks for access to all sites at once.
 ```
 
 **contextMenus**

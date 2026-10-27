@@ -14,7 +14,10 @@ hdTrans 일본어 번역 브라우저 확장 프로그램 · 시행일 2026년 1
 - **분석·광고**: 사용 통계, 오류 보고, 광고, 추적 도구를 쓰지 않습니다.
 - **제3자 제공**: 수집하는 정보가 없으므로 판매하거나 제3자에게 제공하는 정보도 없습니다.
 - **권한**: 모든 사이트 접근 권한을 요구하지 않습니다. 우클릭 메뉴, 툴바(주소창) 아이콘, 단축키로 번역을 요청한 탭에만
-  일시적으로 접근합니다.
+  일시적으로 접근합니다. 사용자가 팝업에서 "이 사이트는 항상 자동 번역"을 켠 사이트에 한해서만 그 사이트(와 하위
+  사이트)에 대한 접근 권한을 브라우저에 요청하며, 허용하면 그 사이트를 열 때 자동으로 번역합니다. 이 권한은
+  브라우저의 확장 프로그램 설정에서 언제든 거둘 수 있고, 팝업에서 끄면 확장 프로그램이 직접 반납합니다. 선택한 사이트
+  목록은 이 기기의 `storage.local`에만 저장합니다.
 
 이 방침이 바뀌면 이 문서와 저장소의 변경 기록에 남깁니다. 문의는
 [GitHub 이슈](https://github.com/laskaflask/hdtrans-browser-extension/issues)로 받습니다.
@@ -33,7 +36,11 @@ This extension does not collect personal data.
 - **Analytics and ads**: No usage statistics, crash reporting, advertising or tracking.
 - **Third parties**: As nothing is collected, nothing is sold or shared.
 - **Permissions**: No access to all websites is requested. The extension gets temporary access only to the tab you
-  ask to translate (context menu, toolbar or address bar icon, keyboard shortcut).
+  ask to translate (context menu, toolbar or address bar icon, keyboard shortcut). Only for a site where you turn on
+  "always translate this site" in the popup does it ask the browser for access to that site (and its subdomains), and
+  once you allow it, pages of that site are translated automatically. You can take the permission back at any time in
+  the browser's extension settings, and turning the option off in the popup returns it. The list of chosen sites is
+  stored only in this device's `storage.local`.
 
 Changes to this policy are recorded in this document and the repository history. Questions:
 [GitHub issues](https://github.com/laskaflask/hdtrans-browser-extension/issues).

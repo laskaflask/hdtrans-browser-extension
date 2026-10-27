@@ -11,6 +11,10 @@ header .muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-s
 footer { display: flex; justify-content: space-between; font-size: 12px; }
 a { color: var(--accent); cursor: pointer; text-decoration: none; }
 
+.auto { display: grid; gap: 4px; }
+.auto .muted { font-size: 12px; }
+.auto .muted:empty { display: none; }
+
 .switch { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
 .switch input { position: absolute; opacity: 0; pointer-events: none; }
 .switch .track {

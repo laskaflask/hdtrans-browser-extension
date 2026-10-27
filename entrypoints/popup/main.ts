@@ -3,7 +3,8 @@ import './style.css';
 import { h } from '@/lib/dom';
 import { matchingRules, MATCH_TYPE_LABELS } from '@/lib/dictionary';
 import type { ContentStatus, UiRequest } from '@/lib/messages';
-import { dictRulesItem, getSettings, settingsItem } from '@/lib/storage';
+import { matchSite, siteKey, sitePatterns } from '@/lib/sites';
+import { autoSitesItem, dictRulesItem, getSettings, settingsItem } from '@/lib/storage';
 
 const app = document.getElementById('app')!;
 
@@ -29,6 +30,17 @@ function openOptions(params = ''): void {
   window.close();
 }
 
+/** Whether the site is translated automatically: chosen, and the browser still lets us in. */
+async function isAutoSite(url: string): Promise<boolean> {
+  const site = matchSite(await autoSitesItem.getValue(), url);
+  return !!site && browser.permissions.contains({ origins: sitePatterns(site) });
+}
+
+async function setAutoSite(key: string, on: boolean): Promise<void> {
+  const sites = (await autoSitesItem.getValue()).filter((s) => s !== key);
+  await autoSitesItem.setValue(on ? [...sites, key] : sites);
+}
+
 async function render(): Promise<void> {
   const tab = await activeTab();
   const tabId = tab?.id;
@@ -40,6 +52,8 @@ async function render(): Promise<void> {
   const rules = matchingRules(await dictRulesItem.getValue(), url);
   let status: ContentStatus = tabId ? await pageStatus(tabId) : { state: 'original', done: 0, total: 0 };
   const settings = await getSettings();
+  const site = siteKey(url);
+  let auto = site ? await isAutoSite(url) : false;
   let timer: ReturnType<typeof setInterval> | undefined;
 
   const draw = (): void => {
@@ -96,6 +110,57 @@ async function render(): Promise<void> {
         h('span', { class: 'track' }),
         '원문과 함께 표시',
       ),
+      site
+        ? h(
+            'div',
+            { class: 'auto' },
+            h(
+              'label',
+              { class: 'switch' },
+              h('input', {
+                type: 'checkbox',
+                role: 'switch',
+                checked: auto,
+                onchange: async (e: Event) => {
+                  const input = e.target as HTMLInputElement;
+                  const on = input.checked;
+                  // The browser takes a permission request only straight from the user's click, so
+                  // it goes first, before anything is awaited.
+                  const request = on ? browser.permissions.request({ origins: sitePatterns(site) }) : undefined;
+                  // Saved before the answer: the permission prompt can close this popup.
+                  await setAutoSite(site, on);
+                  if (on) {
+                    const granted = await request!.catch(() => false);
+                    if (!granted) {
+                      await setAutoSite(site, false);
+                      input.checked = false;
+                      return;
+                    }
+                    if (tabId && status.state === 'original') {
+                      status = await act(tabId, 'translate-page');
+                      poll();
+                    }
+                  } else {
+                    await browser.permissions.remove({ origins: sitePatterns(site) }).catch(() => {});
+                  }
+                  auto = on;
+                  draw();
+                },
+              }),
+              h('span', { class: 'track' }),
+              '이 사이트는 항상 자동 번역',
+            ),
+            h(
+              'div',
+              { class: 'muted' },
+              auto
+                ? `${site} 및 하위 사이트를 열면 자동으로 번역합니다.`
+                : status.state === 'original'
+                  ? ''
+                  : '켜면 이 사이트에서만 접근 권한을 요청합니다.',
+            ),
+          )
+        : '',
       busy ? h('div', { class: 'progress' }, h('div', { style: `width:${pct}%` })) : '',
       status.error ? h('div', { class: 'error' }, status.error) : '',
       status.userDictWarning ? h('div', { class: 'warn' }, `사용자 사전 오류\n${status.userDictWarning}`) : '',
