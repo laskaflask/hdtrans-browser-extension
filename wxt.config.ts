@@ -9,9 +9,9 @@ const hdtransDist = resolve(import.meta.dirname, 'node_modules/hdtrans/dist');
 const ENGINE_FILES = [
   ...['hdtrans_engine.js', 'hdtrans_engine.wasm'].map((file) => resolve(vendorDir, file)),
   ...['runtime.js', 'dicts.hdsnap', 'dicts.txt'].map((file) => resolve(hdtransDist, file)),
-  resolve(hdtransDist, '../THIRD-PARTY-NOTICES.txt'),
+  ...['NOTICE', 'THIRD-PARTY-NOTICES.txt'].map((file) => resolve(hdtransDist, '..', file)),
 ];
-// The license and notices go with every build (AGPL, and the notices of bundled software).
+// The license and notices go with every build (MPL, and the notices of bundled software).
 const LICENSE_FILES = [
   { absoluteSrc: resolve(import.meta.dirname, 'LICENSE'), relativeDest: 'LICENSE.txt' },
   { absoluteSrc: resolve(import.meta.dirname, 'THIRD-PARTY-NOTICES.txt'), relativeDest: 'THIRD-PARTY-NOTICES.txt' },

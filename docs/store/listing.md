@@ -12,7 +12,7 @@ Chrome 웹 스토어와 Firefox 애드온(AMO) 등록 화면에 그대로 붙여
 | 홈페이지 | https://github.com/laskaflask/hdtrans-browser-extension |
 | 지원(문의) | https://github.com/laskaflask/hdtrans-browser-extension/issues |
 | 개인정보처리방침 | https://github.com/laskaflask/hdtrans-browser-extension/blob/main/docs/privacy.md |
-| 라이선스 | GNU AGPL v3.0 이상 (AGPL-3.0-or-later) |
+| 라이선스 | Mozilla Public License 2.0 (MPL-2.0) |
 | 스크린샷 | `screenshots/` 4장 (1280×800) |
 | 작은 프로모션 타일 (Chrome) | `promo/small-promo-440x280.png` |
 
@@ -51,7 +51,7 @@ Chrome 웹 스토어와 Firefox 애드온(AMO) 등록 화면에 그대로 붙여
 • 페이지 본문(메인 프레임)만 번역하며, 다른 사이트에서 불러온 iframe은 번역하지 않습니다.
 • 번역 엔진 hdTrans(https://github.com/sokcuri/hdTrans)를 사용한 비공식 확장 프로그램입니다.
 
-소스 코드(AGPL-3.0): https://github.com/laskaflask/hdtrans-browser-extension
+소스 코드(MPL-2.0): https://github.com/laskaflask/hdtrans-browser-extension
 ```
 
 ## Firefox 애드온 (AMO)
@@ -110,5 +110,5 @@ Privacy
 • No access to all websites is requested; the extension acts only on the tab you ask it to translate.
 
 The interface is in Korean. This is an unofficial extension built on hdTrans (https://github.com/sokcuri/hdTrans).
-Source code (AGPL-3.0): https://github.com/laskaflask/hdtrans-browser-extension
+Source code (MPL-2.0): https://github.com/laskaflask/hdtrans-browser-extension
 ```

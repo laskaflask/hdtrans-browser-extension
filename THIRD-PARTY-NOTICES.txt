@@ -1,20 +1,22 @@
 hdTrans browser extension — third-party notices
 
-This extension is licensed under the GNU Affero General Public License v3.0 or later (see
-LICENSE.txt). Its source code is available at
-https://github.com/laskaflask/hdtrans-browser-extension
+This extension is licensed under the Mozilla Public License 2.0 (see LICENSE.txt). Its source
+code is available at https://github.com/laskaflask/hdtrans-browser-extension
 
 It includes the following third-party software.
 
 ------------------------------------------------------------------------------
 hdTrans (WebAssembly engine, runtime and dictionary)
 https://github.com/sokcuri/hdTrans
-License: AGPL-3.0-or-later (the same license as this extension; see LICENSE.txt)
+Copyright (c) Sokcuri (https://github.com/sokcuri)
+License: MPL-2.0 (the same license as this extension; see LICENSE.txt and hdtrans/NOTICE)
 
-The engine (hdtrans/hdtrans_engine.js, hdtrans/hdtrans_engine.wasm) is built from the hdTrans
-release of the same version; the runtime and dictionary (hdtrans/runtime.js,
-hdtrans/dicts.hdsnap, hdtrans/dicts.txt) come from the hdtrans npm package. The notices for
-software included in the engine are in hdtrans/THIRD-PARTY-NOTICES.txt.
+The engine (hdtrans/hdtrans_engine.js, hdtrans/hdtrans_engine.wasm) is built, unmodified, from
+the source of the hdTrans release of the same version; the runtime and dictionary
+(hdtrans/runtime.js, hdtrans/dicts.hdsnap, hdtrans/dicts.txt) come from the hdtrans npm package.
+The source code of these files is available at https://github.com/sokcuri/hdTrans under the tag
+of that version (hdtrans/VERSION in the source of this extension). The notices for software
+included in the engine are in hdtrans/THIRD-PARTY-NOTICES.txt.
 
 ------------------------------------------------------------------------------
 @wxt-dev/browser, @wxt-dev/storage

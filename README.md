@@ -93,7 +93,7 @@ AMO는 번들·압축한 코드의 원본과, 검토자가 같은 결과물을 �
   npm run build:firefox
   ```
 
-- 미리 빌드된 파일: `vendor/hdtrans/hdtrans_engine.js`, `hdtrans_engine.wasm`은 hdTrans(AGPL) v<버전> 태그를
+- 미리 빌드된 파일: `vendor/hdtrans/hdtrans_engine.js`, `hdtrans_engine.wasm`은 hdTrans(MPL-2.0) v<버전> 태그를
   위 [엔진](#엔진) 절차(`scripts/build-engine.sh`, Emscripten 4.0.22)로 빌드한 것이며, 같은 절차로 다시 만들 수
   있습니다. `runtime.js`와 사전(`dicts.hdsnap`, `dicts.txt`)은 npm `hdtrans` 패키지 파일을 고치지 않고 그대로
   복사합니다(`package-lock.json`에 버전과 무결성 값이 있음).
@@ -131,8 +131,9 @@ AMO는 번들·압축한 코드의 원본과, 검토자가 같은 결과물을 �
 
 ## 라이선스
 
-hdTrans가 AGPL-3.0-or-later이므로 이 확장도 같은 라이선스를 따릅니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참고하세요.
+이 확장은 hdTrans와 같은 MPL-2.0(Mozilla Public License 2.0)으로 배포합니다. 자세한 내용은 [LICENSE](LICENSE) 파일을
+참고하세요. 0.1.0까지의 버전은 당시 hdTrans(0.5.x)를 따라 AGPL-3.0-or-later로 배포했습니다.
 
 빌드 결과물에는 `LICENSE.txt`, 이 확장에 포함된 제3자 소프트웨어 고지([THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)),
-hdTrans 패키지의 고지(`hdtrans/THIRD-PARTY-NOTICES.txt`)가 함께 들어가고, 설정 페이지 아래에 라이선스와 소스 저장소 링크가
+hdTrans 패키지의 고지(`hdtrans/NOTICE`, `hdtrans/THIRD-PARTY-NOTICES.txt`)가 함께 들어가고, 설정 페이지 아래에 라이선스와 소스 저장소 링크가
 있습니다. 번들에 들어가는 npm 패키지가 바뀌면 `THIRD-PARTY-NOTICES.txt`도 고칩니다.

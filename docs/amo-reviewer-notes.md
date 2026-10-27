@@ -8,7 +8,7 @@ Firefox 애드온(AMO)에 제출할 때 "Notes to Reviewer" 칸에 붙여 넣는
 
 **What it does.** Translates Japanese web pages into Korean on request (page action popup or context
 menu). Translation runs entirely inside the extension with the open-source hdTrans engine
-(https://github.com/sokcuri/hdTrans, AGPL-3.0) compiled to WebAssembly. No page text or other data
+(https://github.com/sokcuri/hdTrans, MPL-2.0) compiled to WebAssembly. No page text or other data
 leaves the browser, and nothing is fetched from the network: the engine and its dictionary are
 packaged in the extension (`hdtrans/`). The manifest declares `data_collection_permissions: none`.
 
