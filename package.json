@@ -2,7 +2,7 @@
   "name": "hdtrans-browser-extension",
   "description": "hdTrans WebAssembly 엔진으로 일본어 웹 페이지를 한국어로 번역하는 확장 기능",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "license": "MPL-2.0",
   "scripts": {
