@@ -9,7 +9,8 @@ import type {
   TranslateBatchResponse,
   UiRequest,
 } from '@/lib/messages';
-import { dictRulesItem, getSettings } from '@/lib/storage';
+import { matchSite, sitePatterns } from '@/lib/sites';
+import { autoSitesItem, dictRulesItem, getSettings } from '@/lib/storage';
 
 const MENU_TRANSLATE = 'hdtrans-translate-page';
 const MENU_RESTORE = 'hdtrans-restore-page';
@@ -56,13 +57,16 @@ export default defineBackground(() => {
     }
   });
 
-  // A navigation drops the page's translation, so drop its badge too.
-  browser.tabs.onUpdated.addListener((tabId, change) => {
+  // A navigation drops the page's translation, so drop its badge too. The address is only
+  // there for sites the extension has a host permission for, which are the automatic ones.
+  browser.tabs.onUpdated.addListener((tabId, change, tab) => {
     if (change.status === 'loading') {
       setBadge(tabId, 'original');
       try {
         browser.pageAction?.show?.(tabId);
       } catch {}
+    } else if (change.status === 'complete' && tab.url) {
+      void translateAutomatically(tabId, tab.url);
     }
   });
 
@@ -117,6 +121,16 @@ async function ensureOffscreen(): Promise<void> {
       creatingOffscreen = undefined;
     });
   await creatingOffscreen;
+}
+
+/** Translates a loaded page of a site the user chose to translate automatically. */
+async function translateAutomatically(tabId: number, url: string): Promise<void> {
+  const sites = await autoSitesItem.getValue();
+  const site = matchSite(sites, url);
+  if (!site) return;
+  // The user may have taken the permission back in the browser; then the choice no longer counts.
+  if (!(await browser.permissions.contains({ origins: sitePatterns(site) }))) return;
+  await sendToPage(tabId, { type: 'translate-page' });
 }
 
 /** Injects the page script on first use (activeTab grants access after a menu or popup click). */

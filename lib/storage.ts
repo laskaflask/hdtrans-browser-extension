@@ -27,6 +27,10 @@ export const DEFAULT_SETTINGS: Settings = {
 // storage.local: dictionaries can outgrow storage.sync's per-item quota.
 export const dictRulesItem = storage.defineItem<DictRule[]>('local:dictRules', { fallback: [] });
 
+/** Sites translated automatically (site keys, see lib/sites.ts). Only counts while the browser
+ *  still holds the site's host permission; the user can take it back in the browser. */
+export const autoSitesItem = storage.defineItem<string[]>('local:autoSites', { fallback: [] });
+
 export const settingsItem = storage.defineItem<Settings>('local:settings', { fallback: DEFAULT_SETTINGS });
 
 export async function getSettings(): Promise<Settings> {

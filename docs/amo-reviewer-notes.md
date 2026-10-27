@@ -13,7 +13,12 @@ leaves the browser, and nothing is fetched from the network: the engine and its 
 packaged in the extension (`hdtrans/`). The manifest declares `data_collection_permissions: none`.
 
 **Permissions.** `activeTab` + `scripting`: the page script is injected only into the tab the user
-asks to translate (no host permissions). `contextMenus`: "translate page" / "restore" menu items.
+asks to translate (no host permissions are required). `optional_host_permissions` (`http://*/*`,
+`https://*/*`): nothing is granted at install. When the user turns on "always translate this site" in the
+popup, the popup requests the host permission for that one site (and its subdomains) with
+`permissions.request` from the click handler; once granted, the background script injects the same page
+script and starts the translation when a page of that site finishes loading. Turning the option off
+removes the permission again. `contextMenus`: "translate page" / "restore" menu items.
 `storage`: settings and the user's own dictionaries, stored locally.
 
 **Source code.** The uploaded source package builds the extension with `npm ci && npm run build:firefox`
