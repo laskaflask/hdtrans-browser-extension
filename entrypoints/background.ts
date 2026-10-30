@@ -9,8 +9,8 @@ import type {
   TranslateBatchResponse,
   UiRequest,
 } from '@/lib/messages';
-import { matchSite, sitePatterns } from '@/lib/sites';
-import { autoSitesItem, dictRulesItem, getSettings } from '@/lib/storage';
+import { grantedFor, matchSite, sitePatterns } from '@/lib/sites';
+import { autoSitesItem, dictRulesItem, getSettings, pendingSitesItem, updateSites } from '@/lib/storage';
 
 const MENU_TRANSLATE = 'hdtrans-translate-page';
 const MENU_RESTORE = 'hdtrans-restore-page';
@@ -69,6 +69,12 @@ export default defineBackground(() => {
       void translateAutomatically(tabId, tab.url);
     }
   });
+
+  // The permission prompt can close the popup before it hears the answer.
+  browser.permissions.onAdded.addListener(({ origins = [] }) => void savePendingSites(origins));
+  // A site whose permission the user took back in the browser is no longer chosen, so a later
+  // grant of broader access does not bring it back.
+  browser.permissions.onRemoved.addListener(() => void dropRevokedSites());
 
   dictRulesItem.watch((rules) => {
     cachedRules = rules;
@@ -131,6 +137,23 @@ async function translateAutomatically(tabId: number, url: string): Promise<void>
   // The user may have taken the permission back in the browser; then the choice no longer counts.
   if (!(await browser.permissions.contains({ origins: sitePatterns(site) }))) return;
   await sendToPage(tabId, { type: 'translate-page' });
+}
+
+/** Saves the pending sites these origins were granted for. */
+async function savePendingSites(origins: string[]): Promise<void> {
+  const granted = (await pendingSitesItem.getValue()).filter((site) => grantedFor(site, origins));
+  if (!granted.length) return;
+  await updateSites(autoSitesItem, (sites) => [...sites, ...granted]);
+  await updateSites(pendingSitesItem, (sites) => sites.filter((s) => !granted.includes(s)));
+}
+
+async function dropRevokedSites(): Promise<void> {
+  const sites = await autoSitesItem.getValue();
+  const kept: string[] = [];
+  for (const site of sites) {
+    if (await browser.permissions.contains({ origins: sitePatterns(site) })) kept.push(site);
+  }
+  if (kept.length !== sites.length) await autoSitesItem.setValue(kept);
 }
 
 /** Injects the page script on first use (activeTab grants access after a menu or popup click). */

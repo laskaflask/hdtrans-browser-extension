@@ -3,8 +3,8 @@ import './style.css';
 import { h } from '@/lib/dom';
 import { matchingRules, MATCH_TYPE_LABELS } from '@/lib/dictionary';
 import type { ContentStatus, UiRequest } from '@/lib/messages';
-import { matchSite, siteKey, sitePatterns } from '@/lib/sites';
-import { autoSitesItem, dictRulesItem, getSettings, settingsItem } from '@/lib/storage';
+import { matchSites, siteKey, sitePatterns } from '@/lib/sites';
+import { autoSitesItem, dictRulesItem, getSettings, pendingSitesItem, settingsItem, updateSites } from '@/lib/storage';
 
 const app = document.getElementById('app')!;
 
@@ -30,15 +30,20 @@ function openOptions(params = ''): void {
   window.close();
 }
 
-/** Whether the site is translated automatically: chosen, and the browser still lets us in. */
-async function isAutoSite(url: string): Promise<boolean> {
-  const site = matchSite(await autoSitesItem.getValue(), url);
-  return !!site && browser.permissions.contains({ origins: sitePatterns(site) });
+/** The chosen site that translates this address automatically (it may be a parent site of the
+ *  page's own): chosen, and the browser still lets us in. */
+async function autoSiteFor(url: string): Promise<string | null> {
+  for (const site of matchSites(await autoSitesItem.getValue(), url)) {
+    if (await browser.permissions.contains({ origins: sitePatterns(site) })) return site;
+  }
+  return null;
 }
 
-async function setAutoSite(key: string, on: boolean): Promise<void> {
-  const sites = (await autoSitesItem.getValue()).filter((s) => s !== key);
-  await autoSitesItem.setValue(on ? [...sites, key] : sites);
+/** Stops translating this address automatically: every chosen site covering it, parents too. */
+async function stopAutoSites(url: string): Promise<void> {
+  const sites = matchSites(await autoSitesItem.getValue(), url);
+  await updateSites(autoSitesItem, (all) => all.filter((s) => !sites.includes(s)));
+  for (const site of sites) await browser.permissions.remove({ origins: sitePatterns(site) }).catch(() => {});
 }
 
 async function render(): Promise<void> {
@@ -53,7 +58,7 @@ async function render(): Promise<void> {
   let status: ContentStatus = tabId ? await pageStatus(tabId) : { state: 'original', done: 0, total: 0 };
   const settings = await getSettings();
   const site = siteKey(url);
-  let auto = site ? await isAutoSite(url) : false;
+  let autoSite = site ? await autoSiteFor(url) : null;
   let timer: ReturnType<typeof setInterval> | undefined;
 
   const draw = (): void => {
@@ -120,30 +125,33 @@ async function render(): Promise<void> {
               h('input', {
                 type: 'checkbox',
                 role: 'switch',
-                checked: auto,
+                checked: !!autoSite,
                 onchange: async (e: Event) => {
                   const input = e.target as HTMLInputElement;
                   const on = input.checked;
                   // The browser takes a permission request only straight from the user's click, so
                   // it goes first, before anything is awaited.
                   const request = on ? browser.permissions.request({ origins: sitePatterns(site) }) : undefined;
-                  // Saved before the answer: the permission prompt can close this popup.
-                  await setAutoSite(site, on);
                   if (on) {
+                    // Pending until answered: the prompt can close this popup, and then the background
+                    // saves the site once the browser grants it.
+                    await updateSites(pendingSitesItem, (sites) => [...sites, site]);
                     const granted = await request!.catch(() => false);
+                    await updateSites(pendingSitesItem, (sites) => sites.filter((s) => s !== site));
                     if (!granted) {
-                      await setAutoSite(site, false);
                       input.checked = false;
                       return;
                     }
+                    await updateSites(autoSitesItem, (sites) => [...sites, site]);
+                    autoSite = site;
                     if (tabId && status.state === 'original') {
                       status = await act(tabId, 'translate-page');
                       poll();
                     }
                   } else {
-                    await browser.permissions.remove({ origins: sitePatterns(site) }).catch(() => {});
+                    await stopAutoSites(url);
+                    autoSite = null;
                   }
-                  auto = on;
                   draw();
                 },
               }),
@@ -153,8 +161,8 @@ async function render(): Promise<void> {
             h(
               'div',
               { class: 'muted' },
-              auto
-                ? `${site} 및 하위 사이트를 열면 자동으로 번역합니다.`
+              autoSite
+                ? `${autoSite} 및 하위 사이트를 열면 자동으로 번역합니다.`
                 : status.state === 'original'
                   ? ''
                   : '켜면 이 사이트에서만 접근 권한을 요청합니다.',

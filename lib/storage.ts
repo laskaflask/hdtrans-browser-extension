@@ -31,6 +31,15 @@ export const dictRulesItem = storage.defineItem<DictRule[]>('local:dictRules', {
  *  still holds the site's host permission; the user can take it back in the browser. */
 export const autoSitesItem = storage.defineItem<string[]>('local:autoSites', { fallback: [] });
 
+/** Sites whose permission request is still unanswered. The prompt can close the popup, so the
+ *  background moves a site to autoSitesItem when the browser grants exactly its permission. */
+export const pendingSitesItem = storage.defineItem<string[]>('local:pendingAutoSites', { fallback: [] });
+
+/** Changes a list of site keys, keeping each key once. */
+export async function updateSites(item: typeof autoSitesItem, change: (sites: string[]) => string[]): Promise<void> {
+  await item.setValue([...new Set(change(await item.getValue()))]);
+}
+
 export const settingsItem = storage.defineItem<Settings>('local:settings', { fallback: DEFAULT_SETTINGS });
 
 export async function getSettings(): Promise<Settings> {

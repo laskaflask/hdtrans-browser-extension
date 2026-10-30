@@ -24,9 +24,20 @@ export function sitePatterns(key: string): string[] {
   return [`http://${host}/*`, `https://${host}/*`];
 }
 
-/** The chosen site that covers this address, if any. */
-export function matchSite(sites: readonly string[], url: string): string | null {
+/** The chosen sites that cover this address: the site itself and any parent site chosen too. */
+export function matchSites(sites: readonly string[], url: string): string[] {
   const key = siteKey(url);
-  if (!key) return null;
-  return sites.find((site) => key === site || (!IPV4.test(site) && key.endsWith(`.${site}`))) ?? null;
+  if (!key) return [];
+  return sites.filter((site) => key === site || (!IPV4.test(site) && key.endsWith(`.${site}`)));
+}
+
+/** The first chosen site that covers this address, if any. */
+export function matchSite(sites: readonly string[], url: string): string | null {
+  return matchSites(sites, url)[0] ?? null;
+}
+
+/** Whether these granted origins are exactly the site's patterns, not a broader grant that
+ *  happens to cover it (such as access to all sites given in the browser's settings). */
+export function grantedFor(site: string, origins: readonly string[]): boolean {
+  return sitePatterns(site).every((pattern) => origins.includes(pattern));
 }
