@@ -165,10 +165,10 @@ function entryRow(rule: DictRule, entry: DictEntry): HTMLElement {
   return h(
     'tr',
     {},
-    h('td', {}, field('ja', '日本語')),
-    h('td', {}, field('ko', '한국어')),
-    h('td', { style: 'width:120px' }, field('pos', 'n', { list: 'pos-list' })),
-    h('td', { style: 'width:150px' }, field('options', '')),
+    h('td', { class: 'ja' }, field('ja', '日本語')),
+    h('td', { class: 'ko' }, field('ko', '한국어')),
+    h('td', { class: 'pos' }, field('pos', '품사 (n)', { list: 'pos-list' })),
+    h('td', { class: 'opts' }, field('options', '옵션')),
     h(
       'td',
       { class: 'del' },

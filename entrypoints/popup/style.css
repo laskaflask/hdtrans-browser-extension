@@ -1,4 +1,4 @@
-body { width: 300px; }
+html:not(.mobile) body { width: 300px; }
 main { padding: 14px; display: grid; gap: 10px; }
 header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
 h1 { font-size: 15px; margin: 0; white-space: nowrap; }
@@ -28,3 +28,27 @@ a { color: var(--accent); cursor: pointer; text-decoration: none; }
 .switch input:checked + .track { background: var(--accent); }
 .switch input:checked + .track::after { transform: translateX(14px); }
 .switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Firefox for Android: the popup is a full page, so it fills the screen with finger-sized controls. */
+.mobile body { font-size: 16px; }
+.mobile main { max-width: 560px; margin: 0 auto; padding: 20px 16px 32px; gap: 16px; }
+.mobile h1 { font-size: 18px; }
+.mobile header .muted { font-size: 14px; }
+.mobile .actions { grid-template-columns: 1fr; gap: 10px; }
+.mobile .actions button { min-height: 52px; font-size: 17px; border-radius: 10px; }
+.mobile .switch {
+  justify-content: space-between; flex-direction: row-reverse; gap: 12px;
+  min-height: 56px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px;
+}
+.mobile .switch .track { width: 48px; height: 28px; border-radius: 14px; }
+.mobile .switch .track::after { width: 24px; height: 24px; }
+.mobile .switch input:checked + .track::after { transform: translateX(20px); }
+.mobile .auto { gap: 6px; }
+.mobile .auto .muted, .mobile .rules { font-size: 14px; }
+.mobile .auto .muted { padding: 0 4px; }
+.mobile .progress { height: 6px; border-radius: 3px; }
+.mobile footer { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 15px; }
+.mobile footer a {
+  display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel); text-align: center;
+}
