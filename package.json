@@ -25,6 +25,6 @@
     "wxt": "^0.21.4"
   },
   "dependencies": {
-    "hdtrans": "^0.6.2"
+    "hdtrans": "^0.7.4"
   }
 }

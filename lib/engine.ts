@@ -46,7 +46,9 @@ export class Engine {
     module.FS.writeFile('/dicts.hdsnap', new Uint8Array(snapshot));
     // The dictionary version line, read from next to the snapshot.
     module.FS.writeFile('/dicts.txt', new TextEncoder().encode(version));
-    return new Engine(await HdTrans.init({ module, directories: ['/dicts.hdsnap'] }));
+    // Bad user dictionary rows are skipped and reported (userDictError), not fatal: the library
+    // default rejects the whole dictionary since hdTrans 0.7.0.
+    return new Engine(await HdTrans.init({ module, directories: ['/dicts.hdsnap'], strictDict: false }));
   }
 
   private applyUserDict(userDict: string): string {

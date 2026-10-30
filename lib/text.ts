@@ -7,9 +7,10 @@ export function hasJapanese(text: string): boolean {
   return JAPANESE.test(text);
 }
 
-/** Joins the text nodes of one sentence. The engine keeps it as a word boundary without
- *  changing the particles around it, and writes it back as U+2225. */
-const MARK = '‖';
+/** Joins the text nodes of one sentence. The engine keeps U+2225 as a word boundary without
+ *  changing the particles around it. U+2016 was read as it until hdTrans 0.7.0; it is now an
+ *  ordinary symbol, but page text holding either is still kept away from the marked plan. */
+const MARK = '∥';
 const MARKS = /[‖∥]/;
 
 export interface Piece {
