@@ -19,13 +19,13 @@ describe('text pieces', () => {
 describe('planBoth', () => {
   it('sends a sentence and its ruby readings together and splits the output back', () => {
     const plan = planBoth(planInline(['――〈', '摘命者', '〉。']), planLines(['グリムリーパー']));
-    expect(plan.lines).toEqual(['――〈‖摘命者‖〉。', '――〈摘命者〉。', 'グリムリーパー']);
+    expect(plan.lines).toEqual(['――〈∥摘命者∥〉。', '――〈摘命者〉。', 'グリムリーパー']);
     expect(plan.apply(['――〈∥적명자∥〉.', '――〈적명자〉.', '그림 리퍼'])).toEqual(['――〈', '적명자', '〉.', '그림 리퍼']);
   });
 
   it('sends a word with one node per letter as one part, written to its first node', () => {
     const plan = planInline(['彼は', '本', '当', 'に', '来た。', '雨', ' ', '雪']);
-    expect(plan.lines).toEqual(['彼は‖本当に‖来た。‖雨‖雪', '彼は本当に来た。雨雪']);
+    expect(plan.lines).toEqual(['彼は∥本当に∥来た。∥雨∥雪', '彼は本当に来た。雨雪']);
     expect(plan.apply(['그는∥정말로∥왔다.∥비∥눈', '그는 정말로 왔다. 비 눈'])).toEqual(['그는 ', '정말로 ', '', '', '왔다. ', '비', ' ', '눈']);
   });
 
@@ -35,11 +35,11 @@ describe('planBoth', () => {
     expect(plan.apply(first)).toBeUndefined();
     // Each suspect boundary alone: 今日は|弄 keeps the translation, 弄|ぶ does not.
     const probe = plan.retry!(first)!;
-    expect(probe.lines).toEqual(['今日は‖弄ぶ。', '今日は弄‖ぶ。']);
+    expect(probe.lines).toEqual(['今日は∥弄ぶ。', '今日は弄∥ぶ。']);
     const second = ['오늘은∥희롱한다.', '오늘은 농∥.'];
     expect(probe.apply(second)).toBeUndefined();
     const joined = probe.retry!(second)!;
-    expect(joined.lines).toEqual(['今日は‖弄ぶ。', '今日は弄ぶ。']);
+    expect(joined.lines).toEqual(['今日は∥弄ぶ。', '今日は弄ぶ。']);
     expect(joined.apply(['오늘은∥희롱한다.', '오늘은 희롱한다.'])).toEqual(['오늘은 ', '희롱한다.', '', '가질 수 있는']);
   });
 
@@ -48,7 +48,7 @@ describe('planBoth', () => {
     const first = ['오늘은∥맑음∥이다', '오늘은 맑습니다'];
     expect(plan.apply(first)).toBeUndefined();
     const probe = plan.retry!(first)!;
-    expect(probe.lines).toEqual(['今日は‖晴れです', '今日は晴れ‖です']);
+    expect(probe.lines).toEqual(['今日は∥晴れです', '今日は晴れ∥です']);
     expect(probe.apply(['오늘은∥맑습니다', '오늘은 맑∥습니다'])).toEqual(['오늘은', '맑음', '이다']);
   });
 
