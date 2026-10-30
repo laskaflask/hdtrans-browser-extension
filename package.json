@@ -16,10 +16,12 @@
     "build:engine": "scripts/build-engine.sh",
     "compile": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "npm run build:all && node tests/e2e/run.mjs",
     "postinstall": "wxt prepare"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "puppeteer-core": "^25.16.0",
     "typescript": "^5.9.3",
     "vitest": "^5.0.5",
     "wxt": "^0.21.4"

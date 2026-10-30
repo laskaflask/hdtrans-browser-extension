@@ -46,11 +46,31 @@ npm run build:all      # .output/chrome-mv3, .output/firefox-mv3
 npm run zip            # Chrome 배포 파일
 npm run zip:firefox    # Firefox 배포 파일과 AMO 제출용 소스 묶음
 npm test               # 사전 매칭, 텍스트 분할, 배포할 엔진으로 번역하는 테스트
+npm run test:e2e       # 빌드한 확장을 실제 Chrome·Firefox에 띄워 번역하는 테스트
 npm run compile        # 타입 검사
 ```
 
 `HDTRANS_E2E=1`로 빌드하면 매니페스트에 `http://localhost/*` 접근 권한이 붙습니다. 브라우저 자동화는 `activeTab`을
 줄 수 없으므로 종단 간 테스트용으로만 씁니다.
+
+### 종단 간(E2E) 테스트
+
+`npm run test:e2e`는 두 브라우저를 모두 빌드한 뒤 `tests/e2e/run.mjs`로 각 빌드를 실제 브라우저에 설치하고,
+`tests/e2e/page.html`을 번역합니다. 인라인 요소·루비·글자마다 나뉜 문장, 속성, 잘못된 행이 섞인 사용자 사전,
+원래대로 복원, 설정 페이지의 사전 저장 경고를 확인하고, 페이지와 확장 페이지에 오류가 없어야 통과합니다.
+브라우저는 [puppeteer-core](https://pptr.dev/)로 다룹니다(Chrome은 CDP, Firefox는 WebDriver BiDi).
+
+- 브라우저는 따로 설치합니다. Chrome 정식판은 `--load-extension`을 막으므로 Chromium을 씁니다(Playwright가 설치한
+  Chromium도 찾음). Firefox는 Mozilla 배포판을 쓰며, Linux에서는 `scripts/install-firefox.sh`로 설치할 수 있습니다
+  (`FIREFOX_VERSION=142.0`처럼 버전 지정 가능).
+- 실행 파일 경로는 `CHROMIUM`, `FIREFOX` 환경 변수로 정할 수 있습니다. 한 브라우저만 돌리려면
+  `node tests/e2e/run.mjs firefox`, 번역된 화면을 저장하려면 `E2E_OUT=폴더`를 줍니다.
+- 테스트는 빌드를 임시 폴더에 복사해 테스트 호스트 접근 권한을 더한 뒤 씁니다. Firefox 사본에서는 팝업과 설정 페이지를
+  테스트 호스트에서만 열 수 있게 합니다(자동화로는 `moz-extension://` 페이지로 바로 이동할 수 없음).
+- 번역문 기대값은 엔진 버전에 따라 바뀔 수 있으므로, 엔진을 올릴 때 함께 확인합니다.
+
+Claude Code 클라우드 세션에서는 Chromium이 미리 설치되어 있으므로, 환경의 설정 스크립트(Setup script)에 Firefox
+설치만 넣으면 됩니다. 네트워크 접근에서 `download.mozilla.org`와 `download-installer.cdn.mozilla.net`을 허용해야 합니다.
 
 아이콘 원본은 `assets/icon.svg`이고, 이를 16·32·48·96·128px로 내보낸 PNG를 `public/icon/`에 둡니다(WXT가 매니페스트에
 넣음). 원본을 고치면 PNG도 다시 내보냅니다.
