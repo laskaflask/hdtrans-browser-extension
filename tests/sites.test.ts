@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchSite, siteKey, sitePatterns } from '../lib/sites';
+import { grantedFor, matchSite, matchSites, siteKey, sitePatterns } from '../lib/sites';
 
 describe('siteKey', () => {
   it('is the host without www, in lower case', () => {
@@ -44,5 +44,21 @@ describe('matchSite', () => {
 
   it('matches nothing for pages without a site', () => {
     expect(matchSite(sites, 'about:blank')).toBeNull();
+  });
+});
+
+describe('matchSites', () => {
+  it('lists the site and every chosen parent site', () => {
+    const sites = ['example.com', 'blog.example.com', 'other.com'];
+    expect(matchSites(sites, 'https://blog.example.com/')).toEqual(['example.com', 'blog.example.com']);
+    expect(matchSites(sites, 'https://example.com/')).toEqual(['example.com']);
+  });
+});
+
+describe('grantedFor', () => {
+  it('is true only for exactly the site patterns', () => {
+    expect(grantedFor('example.com', ['http://*.example.com/*', 'https://*.example.com/*'])).toBe(true);
+    expect(grantedFor('example.com', ['https://*.example.com/*'])).toBe(false);
+    expect(grantedFor('example.com', ['http://*/*', 'https://*/*'])).toBe(false);
   });
 });
