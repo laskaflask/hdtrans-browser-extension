@@ -24,6 +24,8 @@ table { width: 100%; border-collapse: collapse; }
 th { text-align: left; font-weight: 500; font-size: 12px; color: var(--muted); padding: 0 4px 4px; }
 td { padding: 2px 4px; }
 td input { width: 100%; }
+td.pos { width: 120px; }
+td.opts { width: 150px; }
 td.del { width: 36px; }
 td.del button { padding: 4px 8px; }
 .entries { max-height: 55vh; overflow: auto; }
@@ -33,3 +35,25 @@ details summary { cursor: pointer; color: var(--muted); }
 .status { min-height: 1.5em; }
 .license { font-size: 12px; }
 .license a { color: var(--accent); }
+
+/* Phones: each entry becomes a small card (Japanese / Korean, then part of speech / options / delete)
+   instead of a table wider than the screen, and controls get finger-sized. */
+@media (max-width: 560px) {
+  main { gap: 20px; padding-top: 16px; }
+  .entries { max-height: none; }
+  .entries thead { display: none; }
+  .entries table, .entries tbody { display: block; }
+  .entries tr {
+    display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px;
+    padding: 8px 0; border-bottom: 1px solid var(--line);
+  }
+  .entries td { display: block; width: auto; padding: 0; }
+  .entries td.ja { grid-column: 1 / 2; }
+  .entries td.ko { grid-column: 2 / 4; }
+  .entries td.del button { height: 100%; }
+}
+@media (pointer: coarse) {
+  input, select, button { min-height: 44px; }
+  input[type='checkbox'] { flex: none; min-height: 0; width: 20px; height: 20px; }
+  .settings label { min-height: 44px; }
+}

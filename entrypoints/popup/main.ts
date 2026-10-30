@@ -47,6 +47,9 @@ async function stopAutoSites(url: string): Promise<void> {
 }
 
 async function render(): Promise<void> {
+  // Firefox for Android shows the popup as a full page: it gets a touch layout that fills the screen.
+  const { os } = await browser.runtime.getPlatformInfo();
+  document.documentElement.classList.toggle('mobile', os === 'android');
   const tab = await activeTab();
   const tabId = tab?.id;
   const url = tab?.url ?? '';
