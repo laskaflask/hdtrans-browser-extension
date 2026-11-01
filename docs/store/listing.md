@@ -27,10 +27,10 @@ Chrome 웹 스토어와 Firefox 애드온(AMO) 등록 화면에 그대로 붙여
 일본어 웹 페이지를 한국어로 번역합니다. AI 번역이 아니라 규칙 기반 번역 엔진 hdTrans를 브라우저 안에서 실행하므로, 번역할 페이지 내용을 외부 서버로 보내지 않습니다. 인터넷 연결이 없어도 번역합니다.
 
 ■ 사용 방법
-• 페이지에서 우클릭 → "페이지 전체 번역"
+• 페이지에서 우클릭 → "hdTrans로 번역하기"
 • 툴바의 hdTrans 아이콘 → "페이지 번역"
 • 단축키 Alt+Shift+T (번역 / 원래대로)
-• 되돌릴 때는 우클릭 → "원래대로 복원" 또는 팝업의 "원래대로"
+• 되돌릴 때는 우클릭 → "hdTrans 원문으로 되돌리기" 또는 팝업의 "원래대로"
 
 ■ 기능
 • 화면에 보이는 부분부터 번역하고, 번역 중에 스크롤하면 새로 보이는 부분을 먼저 번역합니다.
@@ -73,7 +73,7 @@ Chrome 상세 설명과 같은 글을 쓰되, 사용 방법을 아래로 바꿉�
 
 ```text
 ■ 사용 방법
-• 페이지에서 우클릭 → "페이지 전체 번역"
+• 페이지에서 우클릭 → "hdTrans로 번역하기"
 • 주소창의 hdTrans 아이콘 → "페이지 번역"
 • 단축키 Alt+Shift+T (번역 / 원래대로)
 • Firefox for Android: 메뉴 → 확장 기능 → hdTrans 일본어 번역 → "페이지 번역"
@@ -91,7 +91,7 @@ Translates Japanese web pages into Korean with the rule-based hdTrans engine run
 Translates Japanese web pages into Korean. Instead of an online AI service, it runs the rule-based translation engine hdTrans (WebAssembly) inside your browser: the text of the page is never sent anywhere, and translation works without an internet connection.
 
 How to use
-• Right-click the page → "페이지 전체 번역" (translate page)
+• Right-click the page → "hdTrans로 번역하기" (translate page)
 • Click the hdTrans icon in the address bar → "페이지 번역"
 • Keyboard shortcut Alt+Shift+T (translate / restore)
 • Firefox for Android: Menu → Extensions → hdTrans 일본어 번역

@@ -6,30 +6,34 @@ import type {
   ContentStatus,
   EngineRequest,
   EngineResponse,
+  PageState,
   TranslateBatchResponse,
   UiRequest,
 } from '@/lib/messages';
 import { grantedFor, matchSite, sitePatterns } from '@/lib/sites';
 import { autoSitesItem, dictRulesItem, getSettings, pendingSitesItem, updateSites } from '@/lib/storage';
 
-const MENU_TRANSLATE = 'hdtrans-translate-page';
-const MENU_RESTORE = 'hdtrans-restore-page';
+const MENU_TOGGLE = 'hdtrans-toggle-page';
 const OFFSCREEN_PATH = '/offscreen.html';
 
 export default defineBackground(() => {
   // Firefox for Android has no context menus or keyboard shortcuts; the popup still works.
   browser.runtime.onInstalled.addListener(() => {
     browser.contextMenus?.removeAll(() => {
-      browser.contextMenus.create({ id: MENU_TRANSLATE, title: '페이지 전체 번역', contexts: ['page', 'selection', 'link', 'image'] });
-      browser.contextMenus.create({ id: MENU_RESTORE, title: '원래대로 복원', contexts: ['page', 'selection', 'link', 'image'] });
+      browser.contextMenus.create({ id: MENU_TOGGLE, title: menuTitle('original'), contexts: ['page', 'selection', 'link', 'image'] });
     });
   });
 
+  // One item that translates an untranslated page and restores a translated (or translating) one,
+  // which is what the page itself does with toggle-page.
   browser.contextMenus?.onClicked.addListener((info, tab) => {
-    if (!tab?.id) return;
-    const action = info.menuItemId === MENU_RESTORE ? 'restore-page' : 'translate-page';
-    void sendToPage(tab.id, { type: action });
+    if (info.menuItemId !== MENU_TOGGLE || !tab?.id) return;
+    void sendToPage(tab.id, { type: 'toggle-page' });
   });
+
+  // The menu is shared by every tab, so its title follows the active tab of the focused window.
+  browser.tabs.onActivated.addListener(() => void refreshMenu());
+  browser.windows?.onFocusChanged.addListener(() => void refreshMenu());
 
   browser.commands?.onCommand.addListener((command, tab) => {
     if (command === 'toggle-translation' && tab?.id) void sendToPage(tab.id, { type: 'toggle-page' });
@@ -43,7 +47,10 @@ export default defineBackground(() => {
         return true;
       }
       case 'page-state':
-        if (sender.tab?.id && sender.frameId === 0) setBadge(sender.tab.id, msg.state);
+        if (sender.tab?.id && sender.frameId === 0) {
+          setBadge(sender.tab.id, msg.state);
+          if (sender.tab.active) void refreshMenu();
+        }
         return;
       case 'ui-translate-tab':
         sendToPage(msg.tabId, { type: msg.action }).then(sendResponse);
@@ -62,6 +69,7 @@ export default defineBackground(() => {
   browser.tabs.onUpdated.addListener((tabId, change, tab) => {
     if (change.status === 'loading') {
       setBadge(tabId, 'original');
+      if (tab.active) void refreshMenu();
       try {
         browser.pageAction?.show?.(tabId);
       } catch {}
@@ -169,6 +177,30 @@ async function sendToPage(tabId: number, msg: ContentRequest): Promise<ContentSt
   } catch (error) {
     return { state: 'original', done: 0, total: 0, error: `이 페이지에서는 번역할 수 없습니다. (${String(error)})` };
   }
+}
+
+function menuTitle(state: PageState): string {
+  return state === 'original' ? 'hdTrans로 번역하기' : 'hdTrans 원문으로 되돌리기';
+}
+
+let menuRefresh = 0;
+
+/** Sets the menu title from the state of the focused window's active tab. */
+async function refreshMenu(): Promise<void> {
+  if (!browser.contextMenus) return;
+  const refresh = ++menuRefresh;
+  const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true }).catch(() => []);
+  let state: PageState = 'original';
+  if (tab?.id) {
+    try {
+      // Only asks a page script that is already there; a page without one is untranslated.
+      const status: ContentStatus | undefined = await browser.tabs.sendMessage(tab.id, { type: 'get-state' }, { frameId: 0 });
+      state = status?.state ?? 'original';
+    } catch {}
+  }
+  // A later refresh has already answered for a newer tab or state.
+  if (refresh !== menuRefresh) return;
+  browser.contextMenus.update(MENU_TOGGLE, { title: menuTitle(state) }).catch(() => {});
 }
 
 function setBadge(tabId: number, state: ContentStatus['state']): void {
