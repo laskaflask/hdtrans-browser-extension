@@ -64,8 +64,10 @@ export default defineBackground(() => {
     }
   });
 
-  // A navigation drops the page's translation, so drop its badge too. The address is only
-  // there for sites the extension has a host permission for, which are the automatic ones.
+  // A navigation drops the page's translation, so drop its badge too. pushState, #hash and a page
+  // back from the back/forward cache load too but keep theirs, so once loaded the page says which
+  // it is. The address is only there for sites the extension has a host permission for, which are
+  // the automatic ones.
   browser.tabs.onUpdated.addListener((tabId, change, tab) => {
     if (change.status === 'loading') {
       setBadge(tabId, 'original');
@@ -73,8 +75,11 @@ export default defineBackground(() => {
       try {
         browser.pageAction?.show?.(tabId);
       } catch {}
-    } else if (change.status === 'complete' && tab.url) {
-      void translateAutomatically(tabId, tab.url);
+    } else if (change.status === 'complete') {
+      // Translating only after the page has answered, so the answer cannot undo the translation's badge.
+      void syncTab(tabId, tab.active).then((state) => {
+        if (state === 'original' && tab.url) void translateAutomatically(tabId, tab.url);
+      });
     }
   });
 
@@ -183,6 +188,24 @@ function menuTitle(state: PageState): string {
   return state === 'original' ? 'hdTrans로 번역하기' : 'hdTrans 원문으로 되돌리기';
 }
 
+/** The state of a tab's page. Only asks a page script that is already there; a page without one is untranslated. */
+async function pageState(tabId: number): Promise<PageState> {
+  try {
+    const status: ContentStatus | undefined = await browser.tabs.sendMessage(tabId, { type: 'get-state' }, { frameId: 0 });
+    return status?.state ?? 'original';
+  } catch {
+    return 'original';
+  }
+}
+
+/** Sets a loaded tab's badge, and the menu if the tab is active, from the state of its page. */
+async function syncTab(tabId: number, active: boolean): Promise<PageState> {
+  const state = await pageState(tabId);
+  setBadge(tabId, state);
+  if (active) void refreshMenu();
+  return state;
+}
+
 let menuRefresh = 0;
 
 /** Sets the menu title from the state of the focused window's active tab. */
@@ -190,14 +213,7 @@ async function refreshMenu(): Promise<void> {
   if (!browser.contextMenus) return;
   const refresh = ++menuRefresh;
   const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true }).catch(() => []);
-  let state: PageState = 'original';
-  if (tab?.id) {
-    try {
-      // Only asks a page script that is already there; a page without one is untranslated.
-      const status: ContentStatus | undefined = await browser.tabs.sendMessage(tab.id, { type: 'get-state' }, { frameId: 0 });
-      state = status?.state ?? 'original';
-    } catch {}
-  }
+  const state = tab?.id ? await pageState(tab.id) : 'original';
   // A later refresh has already answered for a newer tab or state.
   if (refresh !== menuRefresh) return;
   browser.contextMenus.update(MENU_TOGGLE, { title: menuTitle(state) }).catch(() => {});
