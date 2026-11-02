@@ -64,7 +64,7 @@ hdTrans 소스를 `-sDYNAMIC_EXECUTION=0`으로 다시 빌드한 엔진을 `vend
 | 파일 | 출처 |
 |---|---|
 | `hdtrans_engine.js`, `hdtrans_engine.wasm` | `vendor/hdtrans/` (`npm run build:engine`으로 빌드) |
-| `runtime.js`, `dicts.hdsnap`(약 37MB), `dicts.txt` | npm `hdtrans` 패키지 |
+| `runtime.js`, `dicts.hdsnap`(약 36MB), `dicts.txt` | npm `hdtrans` 패키지 |
 
 사전 스냅숏은 같은 소스로 빌드한 엔진에서만 열리므로, `hdtrans` 버전을 올리면 엔진도 다시 빌드합니다.
 엔진은 hdTrans CI와 같은 Emscripten 4.0.22로만 빌드하며(스크립트가 버전을 확인), 같은 버전이면 몇 번을 빌드해도

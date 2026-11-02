@@ -18,18 +18,19 @@ asks to translate (no host permissions are required). `optional_host_permissions
 popup, the popup requests the host permission for that one site (and its subdomains) with
 `permissions.request` from the click handler; once granted, the background script injects the same page
 script and starts the translation when a page of that site finishes loading. Turning the option off
-removes the permission again. `contextMenus`: "translate page" / "restore" menu items.
+removes the permission again. `contextMenus`: one menu item that translates the page, or restores it
+once it is translated.
 `storage`: settings and the user's own dictionaries, stored locally.
 
 **Source code.** The uploaded source package builds the extension with `npm ci && npm run build:firefox`
 (Node.js 22+, npm 11, any OS); the result in `.output/firefox-mv3/` matches the submitted file
-byte for byte (checked with Node 24.22 / npm 11.21). See "Firefox 애드온(AMO) 제출용 소스" in README.md.
+byte for byte (checked with Node 24.18 / npm 11.16). See "Firefox 애드온(AMO) 제출용 소스" in README.md.
 
 - `hdtrans/hdtrans_engine.js`, `hdtrans/hdtrans_engine.wasm` are built from the hdTrans release tag
-  matching the `hdtrans` npm version (v0.4.4) by `scripts/build-engine.sh` with Emscripten 4.0.22 and
+  matching the `hdtrans` npm version (v0.8.1) by `scripts/build-engine.sh` with Emscripten 4.0.22 and
   `-sDYNAMIC_EXECUTION=0` (so the engine creates no code at run time, as extension CSPs require).
   The build is reproducible; `vendor/hdtrans/BUILD.txt` records the inputs.
-- `hdtrans/runtime.js`, `hdtrans/dicts.hdsnap` (dictionary data, ~37 MB) and `hdtrans/dicts.txt` are
+- `hdtrans/runtime.js`, `hdtrans/dicts.hdsnap` (dictionary data, ~36 MB) and `hdtrans/dicts.txt` are
   copied unmodified from the `hdtrans` npm package (version and integrity in `package-lock.json`).
 
 **Linter warnings (3 × UNSAFE_VAR_ASSIGNMENT, "Unsafe call to import").**
@@ -38,6 +39,6 @@ byte for byte (checked with Node 24.22 / npm 11.21). See "Firefox 애드온(AMO)
   `hdtrans/runtime.js` and `hdtrans/hdtrans_engine.js` with `import()`. The specifier is the
   extension's own origin (`new URL('/hdtrans/', location.origin)`) plus a fixed file name, so only
   files packaged in the extension are imported.
-- `hdtrans/runtime.js` line 20: unmodified hdTrans runtime. It imports the fixed path
+- `hdtrans/runtime.js` line 30: unmodified hdTrans runtime. It imports the fixed path
   `./hdtrans_engine.js` only when no engine module is passed in; the extension always passes one
   (`lib/engine.ts` → `Engine.load`), so this path is not taken.
