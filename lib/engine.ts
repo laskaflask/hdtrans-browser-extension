@@ -53,7 +53,7 @@ export class Engine {
 
   private applyUserDict(userDict: string): string {
     if (userDict !== this.loadedUserDict) {
-      this.t.setUserDictRaw(userDict);
+      this.t.setUserDictRaw(userDict, { strict: false });
       this.loadedUserDict = userDict;
     }
     return this.t.userDictError.replace(/^userdict\.tsv:/gm, '');

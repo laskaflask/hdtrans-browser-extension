@@ -7,11 +7,13 @@ export function hasJapanese(text: string): boolean {
   return JAPANESE.test(text);
 }
 
-/** Joins the text nodes of one sentence. The engine keeps U+2225 as a word boundary without
- *  changing the particles around it. U+2016 was read as it until hdTrans 0.7.0; it is now an
- *  ordinary symbol, but page text holding either is still kept away from the marked plan. */
-const MARK = '∥';
-const MARKS = /[‖∥]/;
+/** Joins the text nodes of one sentence. The engine keeps it as a word boundary without
+ *  changing the particles around it, and writes it back unchanged. 〓 does that; ‖ and ∥ (the
+ *  engine normalizes ‖ to ∥) give the wrong particles since hdTrans 0.9. */
+const MARK = '〓';
+const MARKS = /〓/;
+/** Page text holding a mark, or the ‖/∥ the engine would read as one, stays out of the marked plan. */
+const PAGE_MARKS = /[‖∥〓]/;
 
 export interface Piece {
   lead: string;
@@ -97,7 +99,7 @@ export function planBoth(first: Plan, second: Plan): Plan {
  *  so particles and word order follow the whole sentence. `bases` marks the values that are a
  *  ruby base: one may be half a word (<ruby>弄<rt>もてあそ</rt></ruby>ぶ), unlike text in <b>. */
 export function planInline(values: readonly string[], bases: readonly boolean[] = []): Plan {
-  if (values.some((v) => MARKS.test(v))) return planLines(values);
+  if (values.some((v) => PAGE_MARKS.test(v))) return planLines(values);
   const pieces = values.map((v) => {
     const p = piece(v);
     return { ...p, core: collapseBreaks(p.core) };
@@ -184,7 +186,7 @@ function inlinePlan(pieces: readonly Piece[], groups: number[][], bases: readonl
 
 /** Text without whitespace and boundary marks, for comparing translations. */
 function strip(text: string): string {
-  return text.replace(/[\s‖∥]+/g, '');
+  return text.replace(/[\s〓]+/g, '');
 }
 
 /** The non-empty pieces in order, as groups of indices. Runs of two or more one-letter pieces
