@@ -1,0 +1,116 @@
+name: hdTrans 엔진 업데이트 확인
+
+# hdtrans npm에 새 버전이 올라오면 의존성을 올리고 vendor/hdtrans 엔진을 다시 빌드해
+# PR을 연다. 릴리즈(버전 올리기, 스토어 제출)는 사람이 PR을 검토한 뒤 직접 한다.
+on:
+  schedule:
+    # 엔진이 하루 2번꼴로 릴리즈되어 매번 따라가지 않고, 매주 월요일에 그 시점 최신만 본다.
+    - cron: "17 0 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: engine-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 새 버전 확인
+        id: check
+        run: |
+          latest=$(npm view hdtrans version)
+          current=$(node -p "require('./package-lock.json').packages['node_modules/hdtrans'].version")
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "$latest" = "$current" ]; then
+            echo "hdtrans $current: 최신입니다."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "$(gh pr list --state all --head "engine/hdtrans-$latest" --json number --jq '.[].number')" ]; then
+            # 이미 열었거나(닫았더라도) 처리한 버전은 다시 만들지 않는다.
+            echo "hdtrans $latest: PR이 이미 있습니다."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 의존성 올리기
+        if: steps.check.outputs.needed == 'true'
+        run: npm install "hdtrans@${{ steps.check.outputs.latest }}"
+
+      - name: Emscripten 준비
+        if: steps.check.outputs.needed == 'true'
+        id: emsdk
+        run: |
+          # scripts/build-engine.sh가 요구하는 버전과 항상 같도록 스크립트에서 읽는다.
+          echo "version=$(sed -n 's/^EMSCRIPTEN_VERSION=//p' scripts/build-engine.sh)" >> "$GITHUB_OUTPUT"
+          sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
+
+      - uses: mymindstorm/setup-emsdk@v14
+        if: steps.check.outputs.needed == 'true'
+        with:
+          version: ${{ steps.emsdk.outputs.version }}
+
+      - name: 엔진 다시 빌드
+        if: steps.check.outputs.needed == 'true'
+        run: npm run build:engine
+
+      - name: 타입 검사
+        if: steps.check.outputs.needed == 'true'
+        id: compile
+        continue-on-error: true
+        run: npm run compile
+
+      - name: 단위 테스트
+        if: steps.check.outputs.needed == 'true'
+        id: test
+        continue-on-error: true
+        run: npm test
+
+      - name: PR 열기
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          latest=${{ steps.check.outputs.latest }}
+          current=${{ steps.check.outputs.current }}
+          branch="engine/hdtrans-$latest"
+
+          if [ "${{ steps.compile.outcome }}" = success ] && [ "${{ steps.test.outcome }}" = success ]; then
+            draft=""
+            status="타입 검사와 단위 테스트가 통과했습니다."
+          else
+            draft="--draft"
+            status="⚠️ 타입 검사 또는 단위 테스트가 실패했습니다. 엔진 변경에 맞춰 코드를 고쳐야 합니다 (Actions 로그 참고)."
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add package.json package-lock.json vendor/hdtrans
+          git commit -m "chore: hdTrans 엔진 $latest로 업데이트" \
+            -m "hdtrans npm 패키지를 $current에서 $latest로 올리고, 같은 버전 소스로 엔진을 다시 빌드했다 (npm run build:engine)."
+          git push origin "$branch"
+
+          gh pr create $draft --base "${GITHUB_REF_NAME}" --head "$branch" \
+            --title "chore: hdTrans 엔진 $latest로 업데이트" \
+            --body "hdtrans $current → $latest. 자동 생성된 PR입니다.
+
+          $status
+
+          머지 전에 확인할 것:
+          - [hdTrans 릴리즈 노트](https://github.com/sokcuri/hdTrans/releases/tag/v$latest)에서 API·표기 변경 확인
+          - \`npm run test:e2e\` (Chrome·Firefox 실제 구동, CI에서는 돌리지 않음)
+          - 릴리즈하려면 머지 후 버전을 올리고 스토어에 제출"
