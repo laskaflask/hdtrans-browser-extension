@@ -481,13 +481,13 @@ function renderDicts(): void {
   renderStatus();
 }
 
-// MPL: users of the extension get the license and where its source is.
+// AGPL: users of the extension get the license and where its source is.
 function licenseFooter(): HTMLElement {
   const link = (href: string, text: string) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
   return h(
     'footer',
     { class: 'license muted' },
-    'MPL 2.0으로 배포합니다. ',
+    'AGPL-3.0 이후 버전으로 배포합니다. ',
     link('/LICENSE.txt', '라이선스'),
     ' · ',
     link('/THIRD-PARTY-NOTICES.txt', '제3자 고지'),

@@ -1,7 +1,8 @@
 hdTrans browser extension — third-party notices
 
-This extension is licensed under the Mozilla Public License 2.0 (see LICENSE.txt). Its source
-code is available at https://github.com/laskaflask/hdtrans-browser-extension
+This extension is licensed under the GNU Affero General Public License, version 3 or (at your
+option) any later version (see LICENSE.txt). Its source code is available at
+https://github.com/laskaflask/hdtrans-browser-extension
 
 It includes the following third-party software.
 
@@ -9,7 +10,8 @@ It includes the following third-party software.
 hdTrans (WebAssembly engine, runtime and dictionary)
 https://github.com/sokcuri/hdTrans
 Copyright (c) Sokcuri (https://github.com/sokcuri)
-License: MPL-2.0 (the same license as this extension; see LICENSE.txt and hdtrans/NOTICE)
+License: AGPL-3.0-only (see hdtrans/LICENSE and hdtrans/NOTICE). hdTrans is AGPL-3.0-only, so
+the extension, which includes it, is distributed under version 3 of the AGPL.
 
 The engine (hdtrans/hdtrans_engine.js, hdtrans/hdtrans_engine.wasm) is built, unmodified, from
 the source of the hdTrans release of the same version; the runtime and dictionary
