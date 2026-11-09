@@ -1,1 +1,1 @@
-hdTrans v0.8.1, Emscripten 4.0.22, -sDYNAMIC_EXECUTION=0 (scripts/build-engine.sh)
+hdTrans v0.9.5, Emscripten 4.0.22, -sDYNAMIC_EXECUTION=0 (scripts/build-engine.sh)
