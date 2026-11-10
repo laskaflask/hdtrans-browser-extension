@@ -48,7 +48,7 @@ Chrome 웹 스토어와 Firefox 애드온(AMO) 등록 화면에 그대로 붙여
 
 ■ 참고
 • 처음 번역할 때는 사전을 불러오느라 1초 안팎 더 걸립니다.
-• 페이지 본문(메인 프레임)만 번역하며, 다른 사이트에서 불러온 iframe은 번역하지 않습니다.
+• 다른 사이트에서 불러온 iframe(임베드된 게시물 등)은 사이트 접근 권한을 허용하면 함께 번역합니다.
 • 번역 엔진 hdTrans(https://github.com/sokcuri/hdTrans)를 사용한 비공식 확장 프로그램입니다.
 
 소스 코드(AGPL-3.0-or-later): https://github.com/laskaflask/hdtrans-browser-extension

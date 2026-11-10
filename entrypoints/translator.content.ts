@@ -83,6 +83,10 @@ export default defineContentScript({
     browser.runtime.onMessage.addListener((msg: ContentRequest, _sender, sendResponse) => {
       switch (msg?.type) {
         case 'translate-page':
+          if (msg.wait) {
+            void page.translate().then(() => sendResponse(page.status()));
+            return true;
+          }
           void page.translate();
           break;
         case 'restore-page':
@@ -112,6 +116,8 @@ class PageTranslator {
   private error = '';
   private userDictWarning = '';
   private settings!: Settings;
+  private translating?: Promise<void>;
+  private sawFrame = false;
   private observer?: MutationObserver;
   private dirty = new Set<Node>();
   private flushTimer?: ReturnType<typeof setTimeout>;
@@ -130,6 +136,19 @@ class PageTranslator {
   private itemsCache = new WeakMap<Element, boolean>();
   private outOfFlowCache = new WeakMap<Element, boolean>();
 
+  private onFrameLoad = (e: Event): void => {
+    const target = e.target;
+    if (
+      this.state !== 'original' &&
+      target instanceof Element &&
+      target.tagName.toUpperCase() === 'IFRAME' &&
+      !insideSkipped(target.parentElement) &&
+      !optedOut(target)
+    ) {
+      void this.translateFrames(this.generation);
+    }
+  };
+
   status(): ContentStatus {
     return {
       state: this.state,
@@ -140,8 +159,17 @@ class PageTranslator {
     };
   }
 
-  async translate(): Promise<void> {
-    if (this.state !== 'original') return;
+  translate(): Promise<void> {
+    if (this.state === 'original') {
+      const run = this.doTranslate().finally(() => {
+        if (this.translating === run) this.translating = undefined;
+      });
+      this.translating = run;
+    }
+    return this.translating ?? Promise.resolve();
+  }
+
+  private async doTranslate(): Promise<void> {
     this.error = '';
     this.userDictWarning = '';
     this.done = this.total = 0;
@@ -149,22 +177,41 @@ class PageTranslator {
     const generation = this.generation;
     this.settings = await getSettings();
     if (generation !== this.generation) return;
-    await this.enqueue(this.collect(document.documentElement), generation);
+    document.addEventListener('load', this.onFrameLoad, true);
+    if (this.settings.observeMutations) this.observe();
+    this.sawFrame = false;
+    const jobs = this.collect(document.documentElement);
+    const frames =
+      window === window.top && (this.sawFrame || window.length > 0) ? this.translateFrames(generation) : undefined;
+    await Promise.all([this.enqueue(jobs, generation), frames]);
     if (generation !== this.generation) return;
     this.setState('translated');
-    if (this.settings.observeMutations) this.observe();
+  }
+
+  private async translateFrames(generation: number): Promise<void> {
+    try {
+      const statuses: ContentStatus[] | undefined = await browser.runtime.sendMessage({ type: 'translate-frames' });
+      if (generation !== this.generation || !Array.isArray(statuses)) return;
+      for (const s of statuses) {
+        if (s.userDictWarning && !this.userDictWarning) this.userDictWarning = s.userDictWarning;
+        if (s.error && !this.error) this.error = s.error;
+      }
+    } catch {}
   }
 
   /** Switching between translation only and both redraws a translated page. */
   settingsChanged(next: Settings | null): void {
     if (this.state === 'original' || !this.settings || !next) return;
     if (!!next.bilingual === !!this.settings.bilingual) return;
-    this.restore();
+    this.restore(false);
     void this.translate();
   }
 
-  restore(): void {
+  restore(notify = true): void {
+    if (this.state === 'original') return;
     this.generation++;
+    this.translating = undefined;
+    document.removeEventListener('load', this.onFrameLoad, true);
     this.observer?.disconnect();
     this.observer = undefined;
     clearTimeout(this.flushTimer);
@@ -179,7 +226,10 @@ class PageTranslator {
     this.texts.clear();
     this.attrs.clear();
     this.done = this.total = 0;
-    this.setState('original');
+    this.state = 'original';
+    if (notify && window === window.top) {
+      browser.runtime.sendMessage({ type: 'page-state', state: 'original' }).catch(() => {});
+    }
   }
 
   private setState(state: PageState): void {
@@ -218,6 +268,10 @@ class PageTranslator {
       if (this.settings.translateAttributes && !optedOut(el)) {
         for (const unit of this.attrUnits(el)) jobs.push({ units: [unit], lines: true, attribute: true });
       }
+      if (tag === 'IFRAME' && !optedOut(el)) {
+        this.sawFrame = true;
+        if (el.getRootNode() !== document) el.addEventListener('load', this.onFrameLoad);
+      }
       if (skipElement(el)) return;
       if (tag === 'RT') return void readings.push(...textsOf(el));
       if (el.shadowRoot) visit(el.shadowRoot);
@@ -234,7 +288,7 @@ class PageTranslator {
     const all = [...nodes, ...readings];
     let fresh = all.filter((n) => {
       const known = this.texts.get(n);
-      return !known || n.nodeValue !== known.written;
+      return !known || n.nodeValue !== (known.written ?? known.original);
     });
     // Shown with its translation, the whole run is still original, so it is translated again whole.
     if (this.settings.bilingual && fresh.length) fresh = all;
@@ -304,7 +358,7 @@ class PageTranslator {
       if (!value || !hasJapanese(value)) continue;
       let byName = this.attrs.get(el);
       const known = byName?.get(name);
-      if (known && value === known.written) continue;
+      if (known && value === (known.written ?? known.original)) continue;
       const unit: Unit = known ?? {
         original: value,
         element: el,
@@ -564,7 +618,9 @@ class PageTranslator {
     this.dirty.clear();
     // Drop roots inside other roots so no text is collected twice.
     const top = roots.filter((n) => !roots.some((o) => o !== n && o.contains(n)));
+    this.sawFrame = false;
     const jobs = top.flatMap((root) => this.collect(root));
+    if (this.sawFrame) void this.translateFrames(this.generation);
     if (jobs.length) void this.enqueue(jobs, this.generation);
   }
 }

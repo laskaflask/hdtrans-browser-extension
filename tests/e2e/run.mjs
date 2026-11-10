@@ -15,6 +15,7 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const HOST = 'e2e.example.jp';
+const FRAME_HOST = 'embed.example.jp';
 const FIREFOX_UUID = '5f0e7d2c-1a3b-4c5d-8e9f-0a1b2c3d4e5f';
 // Good row first, then a row with an unknown POS: the engine skips only the bad row.
 const DICTIONARY = [
@@ -30,6 +31,7 @@ const EXPECTED = {
   dict: '도오쿄오의 하늘은 푸르다.',
   code: '今日は',
   alt: '아름다운 꽃',
+  frame: '내 이미지',
 };
 
 function findExecutable(env, names, folders) {
@@ -64,7 +66,7 @@ function extensionCopy(build, pages = []) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hdtrans-e2e-'));
   fs.cpSync(build, dir, { recursive: true });
   const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
-  manifest.host_permissions = [...(manifest.host_permissions ?? []), `http://${HOST}/*`];
+  manifest.host_permissions = [...(manifest.host_permissions ?? []), `http://${HOST}/*`, `http://${FRAME_HOST}/*`];
   if (pages.length) {
     manifest.web_accessible_resources = [
       ...(manifest.web_accessible_resources ?? []),
@@ -82,7 +84,10 @@ const browsers = {
     const browser = await puppeteer.launch({
       browser: 'chrome', executablePath: chromiumPath(), headless: true, enableExtensions: [dir],
       // Chromium has no sandbox for root (containers, CI).
-      args: [`--host-resolver-rules=MAP ${HOST} 127.0.0.1`, ...(process.getuid?.() === 0 ? ['--no-sandbox'] : [])],
+      args: [
+        `--host-resolver-rules=MAP ${HOST} 127.0.0.1, MAP ${FRAME_HOST} 127.0.0.1`,
+        ...(process.getuid?.() === 0 ? ['--no-sandbox'] : []),
+      ],
     });
     const worker = await browser.waitForTarget((t) => t.type() === 'service_worker' && t.url().startsWith('chrome-extension://'));
     const id = new URL(worker.url()).host;
@@ -104,7 +109,7 @@ const browsers = {
       env: { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: '1' },
       extraPrefsFirefox: {
         'extensions.webextensions.uuids': JSON.stringify({ [manifest.browser_specific_settings.gecko.id]: FIREFOX_UUID }),
-        'network.dns.localDomains': HOST,
+        'network.dns.localDomains': `${HOST},${FRAME_HOST}`,
         'extensions.originControls.grantByDefault': true,
       },
     });
@@ -157,15 +162,20 @@ async function run(name, url) {
       await api.scripting.executeScript({ target: { tabId: tab.id }, files: ['/content-scripts/translator.js'] });
       return api.tabs.sendMessage(tab.id, { type }, { frameId: 0 });
     }, type, HOST);
-    const read = () => page.evaluate(() => {
-      const values = Object.fromEntries([...document.querySelectorAll('[id]')].map((e) => [e.id, e.textContent]));
-      // Ruby text marked off with brackets, to see which node took the translation.
-      values.ruby = [...document.querySelector('#ruby').childNodes]
-        .map((n) => (n.nodeName === 'RUBY' ? `[${n.textContent}]` : n.textContent)).join('');
-      values.alt = document.querySelector('#img').alt;
-      delete values.img;
+    const read = async () => {
+      const values = await page.evaluate(() => {
+        const values = Object.fromEntries([...document.querySelectorAll('[id]')].map((e) => [e.id, e.textContent]));
+        // Ruby text marked off with brackets, to see which node took the translation.
+        values.ruby = [...document.querySelector('#ruby').childNodes]
+          .map((n) => (n.nodeName === 'RUBY' ? `[${n.textContent}]` : n.textContent)).join('');
+        values.alt = document.querySelector('#img').alt;
+        delete values.img;
+        return values;
+      });
+      const frame = page.frames().find((f) => f.url().includes('/embed.html'));
+      values.frame = await frame.evaluate(() => document.querySelector('#embed').textContent);
       return values;
-    });
+    };
 
     const original = await read();
     await send('translate-page');
@@ -208,9 +218,15 @@ async function run(name, url) {
 const names = process.argv.slice(2);
 for (const name of names) if (!browsers[name]) throw new Error(`unknown browser: ${name} (chrome, firefox)`);
 const html = fs.readFileSync(path.join(import.meta.dirname, 'page.html'));
-const server = http.createServer((_req, res) => {
+const embedHtml = '<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body><p id="embed">私のイメージ</p></body></html>';
+const server = http.createServer((req, res) => {
+  if (req.url === '/frame.html') {
+    res.writeHead(302, { location: `http://${FRAME_HOST}:${server.address().port}/embed.html` });
+    res.end();
+    return;
+  }
   res.setHeader('content-type', 'text/html; charset=utf-8');
-  res.end(html);
+  res.end(req.url === '/embed.html' ? embedHtml : html);
 });
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const url = `http://${HOST}:${server.address().port}/`;

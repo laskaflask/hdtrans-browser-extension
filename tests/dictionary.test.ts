@@ -32,6 +32,17 @@ describe('matchingRules', () => {
     const off = newRule({ name: 'off', matchType: 'all', enabled: false });
     expect(matchingRules([site, off, global], 'https://x.jp/').map((r) => r.name)).toEqual(['global', 'site']);
   });
+
+  it('matches rules for both the tab URL and a subframe URL', () => {
+    const page = newRule({ name: 'page', matchType: 'host', pattern: 'note.com' });
+    const frame = newRule({ name: 'frame', matchType: 'host', pattern: 'twitter.com' });
+    const other = newRule({ name: 'other', matchType: 'host', pattern: 'other.jp' });
+    expect(
+      matchingRules([page, frame, other], 'https://note.com/n/1', 'https://platform.twitter.com/embed/Tweet.html').map(
+        (r) => r.name,
+      ),
+    ).toEqual(['page', 'frame']);
+  });
 });
 
 describe('TSV', () => {

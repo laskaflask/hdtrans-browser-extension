@@ -80,9 +80,12 @@ export function ruleMatches(rule: Pick<DictRule, 'matchType' | 'pattern'>, url: 
 
 /** Rules for a page in application order: 'all' rules first, then the rest in list order.
  *  hdTrans lets a later row with the same key and part of speech replace an earlier one,
- *  so site rules override the global dictionary. */
-export function matchingRules(rules: readonly DictRule[], url: string): DictRule[] {
-  const enabled = rules.filter((rule) => rule.enabled && ruleMatches(rule, url));
+ *  so site rules override the global dictionary. In a subframe, rules matching either the
+ *  tab's page URL or the frame's own URL apply. */
+export function matchingRules(rules: readonly DictRule[], url: string, frameUrl?: string): DictRule[] {
+  const matches = (rule: DictRule) =>
+    ruleMatches(rule, url) || (!!frameUrl && frameUrl !== url && ruleMatches(rule, frameUrl));
+  const enabled = rules.filter((rule) => rule.enabled && matches(rule));
   return [...enabled.filter((r) => r.matchType === 'all'), ...enabled.filter((r) => r.matchType !== 'all')];
 }
 

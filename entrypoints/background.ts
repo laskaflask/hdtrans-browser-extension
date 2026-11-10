@@ -10,11 +10,12 @@ import type {
   TranslateBatchResponse,
   UiRequest,
 } from '@/lib/messages';
-import { grantedFor, matchSite, sitePatterns } from '@/lib/sites';
+import { ALL_ORIGINS, grantedFor, matchSite, sitePatterns } from '@/lib/sites';
 import { autoSitesItem, dictRulesItem, getSettings, pendingSitesItem, updateSites } from '@/lib/storage';
 
 const MENU_TOGGLE = 'hdtrans-toggle-page';
 const OFFSCREEN_PATH = '/offscreen.html';
+const tabStates = new Map<number, PageState>();
 
 export default defineBackground(() => {
   // Firefox for Android has no context menus or keyboard shortcuts; the popup still works.
@@ -28,30 +29,48 @@ export default defineBackground(() => {
   // which is what the page itself does with toggle-page.
   browser.contextMenus?.onClicked.addListener((info, tab) => {
     if (info.menuItemId !== MENU_TOGGLE || !tab?.id) return;
+    if ((tabStates.get(tab.id) ?? 'original') === 'original') {
+      void browser.permissions.request({ origins: ALL_ORIGINS }).catch(() => false);
+    }
     void sendToPage(tab.id, { type: 'toggle-page' });
   });
 
   // The menu is shared by every tab, so its title follows the active tab of the focused window.
   browser.tabs.onActivated.addListener(() => void refreshMenu());
+  browser.tabs.onRemoved.addListener((tabId) => tabStates.delete(tabId));
   browser.windows?.onFocusChanged.addListener(() => void refreshMenu());
 
   browser.commands?.onCommand.addListener((command, tab) => {
-    if (command === 'toggle-translation' && tab?.id) void sendToPage(tab.id, { type: 'toggle-page' });
+    if (command !== 'toggle-translation' || !tab?.id) return;
+    if ((tabStates.get(tab.id) ?? 'original') === 'original') {
+      void browser.permissions.request({ origins: ALL_ORIGINS }).catch(() => false);
+    }
+    void sendToPage(tab.id, { type: 'toggle-page' });
   });
 
   browser.runtime.onMessage.addListener((msg: BackgroundRequest | UiRequest, sender, sendResponse) => {
     switch (msg?.type) {
       case 'translate-batch': {
         const url = sender.tab?.url ?? sender.url ?? '';
-        translateBatch(url, msg.lines).then(sendResponse);
+        translateBatch(url, sender.url, msg.lines).then(sendResponse);
         return true;
       }
       case 'page-state':
         if (sender.tab?.id && sender.frameId === 0) {
           setBadge(sender.tab.id, msg.state);
           if (sender.tab.active) void refreshMenu();
+          if (msg.state === 'original') {
+            void browser.tabs.sendMessage(sender.tab.id, { type: 'restore-page' } satisfies ContentRequest).catch(() => {});
+          }
         }
         return;
+      case 'translate-frames':
+        if (!sender.tab?.id) {
+          sendResponse([]);
+          return;
+        }
+        translateSubframes(sender.tab.id).then(sendResponse);
+        return true;
       case 'ui-translate-tab':
         sendToPage(msg.tabId, { type: msg.action }).then(sendResponse);
         return true;
@@ -84,7 +103,10 @@ export default defineBackground(() => {
   });
 
   // The permission prompt can close the popup before it hears the answer.
-  browser.permissions.onAdded.addListener(({ origins = [] }) => void savePendingSites(origins));
+  browser.permissions.onAdded.addListener(({ origins = [] }) => {
+    void savePendingSites(origins);
+    if (origins.length) void translateOpenTabs();
+  });
   // A site whose permission the user took back in the browser is no longer chosen, so a later
   // grant of broader access does not bring it back.
   browser.permissions.onRemoved.addListener(() => void dropRevokedSites());
@@ -96,13 +118,13 @@ export default defineBackground(() => {
 
 let cachedRules: DictRule[] | undefined;
 
-async function userDictFor(url: string): Promise<string> {
+async function userDictFor(url: string, frameUrl?: string): Promise<string> {
   cachedRules ??= await dictRulesItem.getValue();
-  return rulesToTsv(matchingRules(cachedRules, url));
+  return rulesToTsv(matchingRules(cachedRules, url, frameUrl));
 }
 
-async function translateBatch(url: string, lines: string[]): Promise<TranslateBatchResponse> {
-  const [userDict, settings] = await Promise.all([userDictFor(url), getSettings()]);
+async function translateBatch(url: string, frameUrl: string | undefined, lines: string[]): Promise<TranslateBatchResponse> {
+  const [userDict, settings] = await Promise.all([userDictFor(url, frameUrl), getSettings()]);
   return callEngine({ type: 'translate', lines, userDict, speech: settings.speech });
 }
 
@@ -124,12 +146,16 @@ async function callEngine(msg: EngineRequest): Promise<EngineResponse> {
 let creatingOffscreen: Promise<void> | undefined;
 
 async function ensureOffscreen(): Promise<void> {
+  await creatingOffscreen;
   const url = browser.runtime.getURL(OFFSCREEN_PATH);
   const contexts = await browser.runtime.getContexts({
     contextTypes: [browser.runtime.ContextType.OFFSCREEN_DOCUMENT],
     documentUrls: [url],
   });
-  if (contexts.length) return;
+  if (contexts.length) {
+    await creatingOffscreen;
+    return;
+  }
   creatingOffscreen ??= browser.offscreen
     .createDocument({
       url,
@@ -171,16 +197,59 @@ async function dropRevokedSites(): Promise<void> {
 
 /** Injects the page script on first use (activeTab grants access after a menu or popup click). */
 async function sendToPage(tabId: number, msg: ContentRequest): Promise<ContentStatus> {
+  let status: ContentStatus | undefined;
   try {
-    return await browser.tabs.sendMessage(tabId, msg, { frameId: 0 });
+    status = await browser.tabs.sendMessage(tabId, msg, { frameId: 0 });
   } catch {
     // Not injected yet.
   }
+  if (!status) {
+    try {
+      await browser.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['/content-scripts/translator.js'] });
+      status = await browser.tabs.sendMessage(tabId, msg, { frameId: 0 });
+    } catch (error) {
+      return { state: 'original', done: 0, total: 0, error: `이 페이지에서는 번역할 수 없습니다. (${String(error)})` };
+    }
+  }
+  status ??= { state: 'original', done: 0, total: 0 };
+  if (msg.type !== 'get-state') {
+    if (status.state === 'original') {
+      void browser.tabs.sendMessage(tabId, { type: 'restore-page' } satisfies ContentRequest).catch(() => {});
+    } else {
+      void translateSubframes(tabId);
+    }
+  }
+  return status;
+}
+
+/** Injects the content script into every accessible frame of the tab and translates subframes. */
+async function translateSubframes(tabId: number): Promise<ContentStatus[]> {
+  let frameIds: number[] = [];
   try {
-    await browser.scripting.executeScript({ target: { tabId }, files: ['/content-scripts/translator.js'] });
-    return await browser.tabs.sendMessage(tabId, msg, { frameId: 0 });
-  } catch (error) {
-    return { state: 'original', done: 0, total: 0, error: `이 페이지에서는 번역할 수 없습니다. (${String(error)})` };
+    const results = await browser.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      files: ['/content-scripts/translator.js'],
+    });
+    frameIds = [...new Set(results.map((r) => r.frameId).filter((id) => id !== 0))];
+  } catch {
+    return [];
+  }
+  const statuses = await Promise.all(
+    frameIds.map((frameId) =>
+      browser.tabs
+        .sendMessage(tabId, { type: 'translate-page', wait: true } satisfies ContentRequest, { frameId })
+        .catch(() => undefined),
+    ),
+  );
+  return statuses.filter((s): s is ContentStatus => !!s);
+}
+
+/** Translates cross-origin frames in tabs that were already translating when host access was granted. */
+async function translateOpenTabs(): Promise<void> {
+  const active = await browser.tabs.query({ active: true, lastFocusedWindow: true }).catch(() => []);
+  const ids = new Set<number>([...tabStates.keys(), ...active.flatMap((t) => (t.id ? [t.id] : []))]);
+  for (const tabId of ids) {
+    if ((await pageState(tabId)) !== 'original') void translateSubframes(tabId);
   }
 }
 
@@ -220,6 +289,7 @@ async function refreshMenu(): Promise<void> {
 }
 
 function setBadge(tabId: number, state: ContentStatus['state']): void {
+  tabStates.set(tabId, state);
   const text = state === 'translated' ? 'KO' : state === 'translating' ? '…' : '';
   if (browser.action?.setBadgeText) {
     browser.action.setBadgeText({ tabId, text }).catch(() => {});

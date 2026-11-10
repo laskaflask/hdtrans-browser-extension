@@ -6,7 +6,10 @@ export interface EngineInfo {
 }
 
 /** content script → background */
-export type BackgroundRequest = { type: 'translate-batch'; lines: string[] } | { type: 'page-state'; state: PageState };
+export type BackgroundRequest =
+  | { type: 'translate-batch'; lines: string[] }
+  | { type: 'page-state'; state: PageState }
+  | { type: 'translate-frames' };
 
 export interface TranslateBatchResponse {
   lines?: string[];
@@ -32,7 +35,11 @@ export interface EngineResponse {
 }
 
 /** background/popup → content script */
-export type ContentRequest = { type: 'translate-page' } | { type: 'restore-page' } | { type: 'toggle-page' } | { type: 'get-state' };
+export type ContentRequest =
+  | { type: 'translate-page'; wait?: boolean }
+  | { type: 'restore-page' }
+  | { type: 'toggle-page' }
+  | { type: 'get-state' };
 
 export type PageState = 'original' | 'translating' | 'translated';
 

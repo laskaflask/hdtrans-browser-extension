@@ -3,7 +3,7 @@ import './style.css';
 import { h } from '@/lib/dom';
 import { matchingRules, MATCH_TYPE_LABELS } from '@/lib/dictionary';
 import type { ContentStatus, UiRequest } from '@/lib/messages';
-import { matchSites, siteKey, sitePatterns } from '@/lib/sites';
+import { ALL_ORIGINS, matchSites, siteKey, sitePatterns } from '@/lib/sites';
 import { autoSitesItem, dictRulesItem, getSettings, pendingSitesItem, settingsItem, updateSites } from '@/lib/storage';
 
 const app = document.getElementById('app')!;
@@ -78,9 +78,17 @@ async function render(): Promise<void> {
             class: 'primary',
             disabled: !tabId || status.state !== 'original',
             onclick: async () => {
+              // Request access to all sites straight from the click so cross-origin iframes (such as
+              // embedded posts) can be injected too. The main page translates either way.
+              const perm = browser.permissions.request({ origins: ALL_ORIGINS }).catch(() => false);
               status = await act(tabId!, 'translate-page');
               draw();
               poll();
+              if (await perm) {
+                status = await act(tabId!, 'translate-page');
+                draw();
+                poll();
+              }
             },
           },
           busy ? '번역 중…' : status.state === 'translated' ? '번역됨' : '페이지 번역',

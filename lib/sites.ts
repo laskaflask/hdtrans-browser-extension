@@ -3,6 +3,9 @@
 
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 
+/** Optional host permission patterns covering every http(s) frame, including cross-origin iframes. */
+export const ALL_ORIGINS = ['http://*/*', 'https://*/*'];
+
 /** The site an address belongs to: its host without a leading "www.", or null for pages this
  *  extension does not ask site access for (not http(s), or an IPv6 address). */
 export function siteKey(url: string): string | null {
