@@ -3,14 +3,37 @@ import './style.css';
 import { h } from '@/lib/dom';
 import { matchingRules, MATCH_TYPE_LABELS } from '@/lib/dictionary';
 import type { ContentStatus, UiRequest } from '@/lib/messages';
-import { matchSites, siteKey, sitePatterns } from '@/lib/sites';
+import { ALL_ORIGINS, matchSites, originPattern, siteKey, sitePatterns } from '@/lib/sites';
 import { autoSitesItem, dictRulesItem, getSettings, pendingSitesItem, settingsItem, updateSites } from '@/lib/storage';
 
 const app = document.getElementById('app')!;
+/** When the embed notice opens the popup as a tab, it names the tab to act on. */
+const tabParam = Number(new URLSearchParams(location.search).get('tabId'));
 
 async function activeTab() {
+  if (tabParam) return browser.tabs.get(tabParam).catch(() => undefined);
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   return tab;
+}
+
+/** Frame origin patterns this page includes but the extension may not read yet. */
+async function missingFrameOrigins(status: ContentStatus): Promise<string[]> {
+  const patterns = (status.frameOrigins ?? [])
+    .map((origin) => originPattern(origin))
+    .filter((pattern): pattern is string => !!pattern);
+  const missing: string[] = [];
+  for (const pattern of patterns) {
+    if (!(await browser.permissions.contains({ origins: [pattern] }))) missing.push(pattern);
+  }
+  return missing;
+}
+
+function originHost(pattern: string): string {
+  try {
+    return new URL(pattern.replace(/\*$/, '')).host;
+  } catch {
+    return pattern;
+  }
 }
 
 async function pageStatus(tabId: number): Promise<ContentStatus> {
@@ -43,7 +66,10 @@ async function autoSiteFor(url: string): Promise<string | null> {
 async function stopAutoSites(url: string): Promise<void> {
   const sites = matchSites(await autoSitesItem.getValue(), url);
   await updateSites(autoSitesItem, (all) => all.filter((s) => !sites.includes(s)));
-  for (const site of sites) await browser.permissions.remove({ origins: sitePatterns(site) }).catch(() => {});
+  const broad = await browser.permissions.contains({ origins: ALL_ORIGINS }).catch(() => false);
+  if (!broad) {
+    for (const site of sites) await browser.permissions.remove({ origins: sitePatterns(site) }).catch(() => {});
+  }
 }
 
 async function render(): Promise<void> {
@@ -52,17 +78,23 @@ async function render(): Promise<void> {
   document.documentElement.classList.toggle('mobile', os === 'android');
   const tab = await activeTab();
   const tabId = tab?.id;
-  const url = tab?.url ?? '';
+  let status: ContentStatus = tabId ? await pageStatus(tabId) : { state: 'original', done: 0, total: 0 };
+  const url = tab?.url || status.url || '';
   let host = '';
   try {
     host = new URL(url).hostname;
   } catch {}
   const rules = matchingRules(await dictRulesItem.getValue(), url);
-  let status: ContentStatus = tabId ? await pageStatus(tabId) : { state: 'original', done: 0, total: 0 };
   const settings = await getSettings();
   const site = siteKey(url);
   let autoSite = site ? await autoSiteFor(url) : null;
+  let missingFrames: string[] = [];
   let timer: ReturnType<typeof setInterval> | undefined;
+
+  /** Recomputes which of the page's cross-origin frames still need their own permission. */
+  const refreshFrames = async (): Promise<void> => {
+    missingFrames = tabId && status.state !== 'original' ? await missingFrameOrigins(status) : [];
+  };
 
   const draw = (): void => {
     const busy = status.state === 'translating';
@@ -78,7 +110,9 @@ async function render(): Promise<void> {
             class: 'primary',
             disabled: !tabId || status.state !== 'original',
             onclick: async () => {
+              // activeTab covers this page only. Cross-origin embeds ask for their own origin below.
               status = await act(tabId!, 'translate-page');
+              await refreshFrames();
               draw();
               poll();
             },
@@ -91,12 +125,51 @@ async function render(): Promise<void> {
             disabled: !tabId || status.state === 'original',
             onclick: async () => {
               status = await act(tabId!, 'restore-page');
+              await refreshFrames();
               draw();
             },
           },
           '원래대로',
         ),
       ),
+      busy ? h('div', { class: 'progress' }, h('div', { style: `width:${pct}%` })) : '',
+      status.error ? h('div', { class: 'error' }, status.error) : '',
+      status.userDictWarning ? h('div', { class: 'warn' }, `사용자 사전 오류\n${status.userDictWarning}`) : '',
+      missingFrames.length
+        ? h(
+            'div',
+            { class: 'embeds' },
+            h(
+              'div',
+              { class: 'muted' },
+              `권한이 없는 임베드 ${missingFrames.length}개: ${missingFrames.map(originHost).join(', ')}`,
+            ),
+            h(
+              'button',
+              {
+                onclick: async () => {
+                  // The browser takes a permission request only straight from this click.
+                  const request = browser.permissions.request({ origins: [...missingFrames] }).catch(() => false);
+                  if (!(await request)) return;
+                  // The prompt may close this popup; the background also translates on onAdded.
+                  await browser.runtime
+                    .sendMessage({ type: 'ui-translate-frames', tabId: tabId! } satisfies UiRequest)
+                    .catch(() => []);
+                  status = await pageStatus(tabId!);
+                  await refreshFrames();
+                  if (tabParam && !missingFrames.length) {
+                    await browser.tabs.update(tabParam, { active: true }).catch(() => {});
+                    window.close();
+                    return;
+                  }
+                  draw();
+                  poll();
+                },
+              },
+              '임베드 번역 허용',
+            ),
+          )
+        : '',
       h(
         'label',
         { class: 'switch' },
@@ -111,6 +184,7 @@ async function render(): Promise<void> {
             if (!tabId || status.state === 'original') return;
             await new Promise((resolve) => setTimeout(resolve, 100));
             status = await pageStatus(tabId);
+            await refreshFrames();
             draw();
             poll();
           },
@@ -149,6 +223,7 @@ async function render(): Promise<void> {
                     autoSite = site;
                     if (tabId && status.state === 'original') {
                       status = await act(tabId, 'translate-page');
+                      await refreshFrames();
                       poll();
                     }
                   } else {
@@ -172,9 +247,6 @@ async function render(): Promise<void> {
             ),
           )
         : '',
-      busy ? h('div', { class: 'progress' }, h('div', { style: `width:${pct}%` })) : '',
-      status.error ? h('div', { class: 'error' }, status.error) : '',
-      status.userDictWarning ? h('div', { class: 'warn' }, `사용자 사전 오류\n${status.userDictWarning}`) : '',
       h('div', {}, h('div', { class: 'muted' }, `이 페이지에 적용되는 사전 ${rules.length}개`)),
       rules.length
         ? h(
@@ -197,11 +269,13 @@ async function render(): Promise<void> {
     if (!tabId || status.state !== 'translating') return;
     timer = setInterval(async () => {
       status = await pageStatus(tabId);
+      await refreshFrames();
       draw();
       if (status.state !== 'translating') clearInterval(timer);
     }, 300);
   };
 
+  await refreshFrames();
   draw();
   poll();
 }

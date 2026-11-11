@@ -33,6 +33,12 @@ textarea { width: 100%; min-height: 140px; font-family: ui-monospace, Menlo, mon
 details summary { cursor: pointer; color: var(--muted); }
 .empty { padding: 40px 16px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 10px; }
 .status { min-height: 1.5em; }
+button.small { padding: 4px 10px; font-size: 12px; }
+.access-all {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding-top: 10px; margin-top: 4px; border-top: 1px solid var(--line); font-size: 13px;
+}
+.access-all > .muted { flex: 1 1 280px; }
 .license { font-size: 12px; }
 .license a { color: var(--accent); }
 

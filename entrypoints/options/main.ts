@@ -13,7 +13,16 @@ import {
   type MatchType,
 } from '@/lib/dictionary';
 import type { EngineResponse, UiRequest } from '@/lib/messages';
-import { dictRulesItem, getSettings, settingsItem, type Settings } from '@/lib/storage';
+import { ALL_ORIGINS, sitePatterns } from '@/lib/sites';
+import {
+  autoSitesItem,
+  dictRulesItem,
+  frameOriginsItem,
+  getSettings,
+  settingsItem,
+  updateSites,
+  type Settings,
+} from '@/lib/storage';
 
 const POS = ['n', 'phrase', 'name', 'surname', 'intj', 'lead', 'hon', 'v', 'v1', 'v5', 'adj', 'na', 'adv', 'ono', 'end', 'pat'];
 const PATTERN_HINTS: Record<MatchType, string> = {
@@ -112,6 +121,121 @@ function settingsSection(settings: Settings): HTMLElement {
           onchange: (e: Event) => update({ showProgress: (e.target as HTMLInputElement).checked }),
         }),
         '번역을 기다리는 문장을 깜빡여 표시',
+      ),
+    ),
+  );
+}
+
+const sitesRoot = h('section', {});
+
+function hostOf(pattern: string): string {
+  try {
+    return new URL(pattern.replace(/\*$/, '')).host;
+  } catch {
+    return pattern;
+  }
+}
+
+/** A site or embed origin the browser lets the extension read, with a way to revoke it. */
+function permissionRow(label: string, kind: string, action: string, revoke: () => Promise<void>): HTMLElement {
+  return h(
+    'div',
+    { class: 'row' },
+    h('span', { class: 'grow' }, label, h('span', { class: 'muted' }, ` · ${kind}`)),
+    h('button', { class: 'small danger', onclick: () => void revoke() }, action),
+  );
+}
+
+/** Lists the host permissions granted per site (automatic translation) or per embed origin,
+ *  and offers the optional all-sites exception at the bottom. */
+async function renderSiteAccess(): Promise<void> {
+  const broad = await browser.permissions.contains({ origins: ALL_ORIGINS }).catch(() => false);
+  const autoSites = await autoSitesItem.getValue();
+  const keptSites: string[] = [];
+  for (const site of autoSites) {
+    if (await browser.permissions.contains({ origins: sitePatterns(site) })) keptSites.push(site);
+  }
+  if (keptSites.length !== autoSites.length) await autoSitesItem.setValue(keptSites);
+
+  const savedOrigins = await frameOriginsItem.getValue();
+  const keptOrigins: string[] = [];
+  if (!broad) {
+    for (const pattern of savedOrigins) {
+      if (await browser.permissions.contains({ origins: [pattern] })) keptOrigins.push(pattern);
+    }
+    if (keptOrigins.length !== savedOrigins.length) await frameOriginsItem.setValue(keptOrigins);
+  }
+
+  const rows: HTMLElement[] = [
+    ...keptSites.map((site) =>
+      permissionRow(site, '자동 번역', '자동 번역 끄기', async () => {
+        await updateSites(autoSitesItem, (sites) => sites.filter((s) => s !== site));
+        if (!broad) await browser.permissions.remove({ origins: sitePatterns(site) }).catch(() => false);
+        await renderSiteAccess();
+      }),
+    ),
+    ...(broad
+      ? []
+      : keptOrigins.map((pattern) =>
+          permissionRow(hostOf(pattern), '임베드', '권한 취소', async () => {
+            await browser.permissions.remove({ origins: [pattern] }).catch(() => false);
+            await frameOriginsItem.setValue((await frameOriginsItem.getValue()).filter((p) => p !== pattern));
+            await renderSiteAccess();
+          }),
+        )),
+  ];
+
+  sitesRoot.replaceChildren(
+    h('h2', {}, '사이트 접근 권한'),
+    h(
+      'div',
+      { class: 'muted' },
+      'hdTrans는 최소 권한 원칙에 따라 기본적으로 어떤 사이트의 접근 권한도 요구하지 않으며, 번역을 요청한 탭에서만 일시적으로 동작합니다. 사이트별 자동 번역이나 외부 임베드(iframe) 번역을 위해 직접 허용한 권한만 아래에 표시되며, 언제든 취소할 수 있습니다.',
+    ),
+    h(
+      'div',
+      { class: 'settings' },
+      ...(broad && rows.length
+        ? [h('div', { class: 'muted' }, '모든 페이지 접근 권한이 허용되어 있어 임베드 출처별 허용은 따로 필요하지 않습니다.')]
+        : []),
+      ...(rows.length
+        ? rows
+        : [
+            h(
+              'div',
+              { class: 'muted' },
+              broad
+                ? '자동 번역하도록 선택한 사이트가 없습니다. (모든 페이지 접근 권한이 있어 임베드 출처는 개별 허용 없이 번역됩니다.)'
+                : '현재 사이트별로 허용한 접근 권한이 없습니다.',
+            ),
+          ]),
+      h(
+        'div',
+        { class: 'access-all' },
+        h(
+          'span',
+          { class: 'muted' },
+          broad
+            ? '예외적으로 모든 페이지(http/https) 접근 권한이 허용되어 있습니다. 임베드 출처나 자동 번역 사이트마다 권한을 따로 묻지 않습니다.'
+            : '최소 권한 원칙상 기본값은 아니지만, 사이트나 임베드마다 권한을 허용하는 과정이 번거롭다면 예외적으로 모든 페이지 접근 권한을 미리 허용할 수 있습니다. (자동 번역 여부는 여전히 사이트별로 설정합니다.)',
+        ),
+        h(
+          'button',
+          {
+            class: broad ? 'small danger' : 'small',
+            onclick: async () => {
+              if (broad) {
+                await browser.permissions.remove({ origins: ALL_ORIGINS });
+              } else {
+                // The browser takes the request only straight from this click, before any await.
+                const ok = await browser.permissions.request({ origins: ALL_ORIGINS }).catch(() => false);
+                if (!ok) return;
+              }
+              await renderSiteAccess();
+            },
+          },
+          broad ? '전체 사이트 권한 취소' : '모든 페이지 접근 허용',
+        ),
       ),
     ),
   );
@@ -520,10 +644,21 @@ async function main(): Promise<void> {
     h('header', {}, h('h1', {}, 'hdTrans 일본어 → 한국어'), version),
     settingsSection(settings),
     dictsRoot,
+    sitesRoot,
     h('datalist', { id: 'pos-list' }, POS.map((p) => h('option', { value: p }))),
     licenseFooter(),
   );
   renderDicts();
+  if (newHost) {
+    const inputs = app.querySelectorAll<HTMLInputElement>('.entries tbody tr:last-child input');
+    inputs[0]?.focus();
+  }
+  void renderSiteAccess();
+  // A permission granted or taken back in the browser updates the stored lists from the background.
+  autoSitesItem.watch(() => void renderSiteAccess());
+  frameOriginsItem.watch(() => void renderSiteAccess());
+  browser.permissions.onAdded.addListener(() => void renderSiteAccess());
+  browser.permissions.onRemoved.addListener(() => void renderSiteAccess());
 
   window.addEventListener('beforeunload', (e) => {
     if (dirty) e.preventDefault();

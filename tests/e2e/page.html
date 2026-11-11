@@ -11,5 +11,11 @@
 <p id="mark">区切り‖記号を含む文です。</p>
 <img id="img" alt="美しい花" src="data:,">
 <code id="code">今日は</code>
+<iframe id="frame-same" src="/embed-same.html"></iframe>
+<iframe id="frame" src="__FRAME_ORIGIN__/embed.html"></iframe>
+<!-- Cross-origin frame opted out: it must stay untranslated even when its origin is allowed. -->
+<iframe id="frame-optout" src="__FRAME_ORIGIN__/embed-optout.html" translate="no"></iframe>
+<!-- Frame whose own document opts out: its page script must refuse to translate it. -->
+<iframe id="frame-docoptout" src="__FRAME_ORIGIN__/embed-docoptout.html"></iframe>
 </body>
 </html>

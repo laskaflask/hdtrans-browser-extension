@@ -15,6 +15,10 @@ a { color: var(--accent); cursor: pointer; text-decoration: none; }
 .auto .muted { font-size: 12px; }
 .auto .muted:empty { display: none; }
 
+.embeds { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.embeds .muted { font-size: 12px; overflow-wrap: anywhere; }
+.embeds button { justify-self: start; }
+
 .switch { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
 .switch input { position: absolute; opacity: 0; pointer-events: none; }
 .switch .track {
