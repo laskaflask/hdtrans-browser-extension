@@ -44,11 +44,12 @@ Chrome 웹 스토어와 Firefox 애드온(AMO) 등록 화면에 그대로 붙여
 ■ 개인정보
 • 번역은 모두 브라우저 안에서 하며, 페이지 내용이나 방문 기록을 어디에도 보내지 않습니다.
 • 설정과 사용자 사전은 이 브라우저에만 저장됩니다.
-• 모든 사이트 접근 권한을 요구하지 않습니다. 번역을 요청한 탭에서만 동작하며, "이 사이트는 항상 자동 번역"을 켠 사이트에 한해 그 사이트 권한을 따로 허용받습니다.
+• 최소 권한 원칙에 따라 기본적으로 어떤 사이트의 접근 권한도 요구하지 않습니다. 번역을 요청한 탭에서만 동작하며, "이 사이트는 항상 자동 번역"을 켠 사이트에 한해 그 사이트 권한을 따로 허용받습니다. 사이트나 임베드마다 권한을 허용하기 번거로운 경우 설정의 "모든 페이지 접근 허용"으로 모든 사이트 권한을 미리 허용할 수도 있고, 언제든 취소할 수 있습니다.
+• 다른 사이트의 iframe(임베드된 게시물 등)은 팝업에서 그 프레임 출처만 허용했을 때 번역하며, 자동 번역 사이트와 임베드 출처 권한은 설정의 "사이트 접근 권한"에서 함께 확인하고 취소할 수 있습니다.
 
 ■ 참고
 • 처음 번역할 때는 사전을 불러오느라 1초 안팎 더 걸립니다.
-• 페이지 본문(메인 프레임)만 번역하며, 다른 사이트에서 불러온 iframe은 번역하지 않습니다.
+• 다른 사이트에서 불러온 iframe은 그 출처의 접근 권한이 없으면 원문으로 남고, 팝업과 페이지 오른쪽 아래에 임베드 번역 허용 안내가 나타납니다.
 • 번역 엔진 hdTrans(https://github.com/sokcuri/hdTrans)를 사용한 비공식 확장 프로그램입니다.
 
 소스 코드(AGPL-3.0-or-later): https://github.com/laskaflask/hdtrans-browser-extension
@@ -102,12 +103,13 @@ Features
 • Show the original alongside: keep the Japanese text and show each sentence's translation after it.
 • Keeps translating content that appears later (infinite scroll, comments).
 • Also translates image descriptions, tooltips and input placeholders.
+• Translates same-site iframes, and cross-site embeds once you allow that embed's origin. Frames marked translate="no" are left alone.
 • User dictionaries for names and terms, for all sites or for specific sites and URL patterns, with TSV import and export.
 
 Privacy
 • All translation happens in the browser. No page content, browsing history or other data is collected or transmitted.
 • Settings and dictionaries are stored only in this browser.
-• No access to all websites is requested; the extension acts only on the tab you ask it to translate.
+• By default no access to all websites is requested; the extension acts only on the tab you ask it to translate, plus the embed origins you allow one by one. The settings page offers a one-time "allow access to all pages" grant (also revocable) for people who do not want those prompts.
 
 The interface is in Korean. This is an unofficial extension built on hdTrans (https://github.com/sokcuri/hdTrans).
 Source code (AGPL-3.0-or-later): https://github.com/laskaflask/hdtrans-browser-extension

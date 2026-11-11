@@ -13,11 +13,18 @@ hdTrans 일본어 번역 브라우저 확장 프로그램 · 시행일 2026년 1
 - **네트워크**: 확장 프로그램은 자신의 패키지에 든 파일(번역 엔진과 사전)만 읽으며, 외부 서버에 접속하지 않습니다.
 - **분석·광고**: 사용 통계, 오류 보고, 광고, 추적 도구를 쓰지 않습니다.
 - **제3자 제공**: 수집하는 정보가 없으므로 판매하거나 제3자에게 제공하는 정보도 없습니다.
-- **권한**: 모든 사이트 접근 권한을 요구하지 않습니다. 우클릭 메뉴, 툴바(주소창) 아이콘, 단축키로 번역을 요청한 탭에만
-  일시적으로 접근합니다. 사용자가 팝업에서 "이 사이트는 항상 자동 번역"을 켠 사이트에 한해서만 그 사이트(와 하위
-  사이트)에 대한 접근 권한을 브라우저에 요청하며, 허용하면 그 사이트를 열 때 자동으로 번역합니다. 이 권한은
-  브라우저의 확장 프로그램 설정에서 언제든 거둘 수 있고, 팝업에서 끄면 확장 프로그램이 직접 반납합니다. 선택한 사이트
-  목록은 이 기기의 `storage.local`에만 저장합니다.
+- **권한**: 최소 권한 원칙에 따라 기본적으로 어떤 사이트의 접근 권한도 요구하지 않습니다. 우클릭 메뉴, 툴바(주소창) 아이콘, 단축키로 번역을
+  요청한 탭에만 일시적으로 접근합니다. 사용자가 팝업에서 "이 사이트는 항상 자동 번역"을 켠 사이트에 한해서만 그
+  사이트(와 하위 사이트)에 대한 접근 권한을 브라우저에 요청하며, 허용하면 그 사이트를 열 때 자동으로 번역합니다. 이
+  권한은 브라우저의 확장 프로그램 설정에서 언제든 거둘 수 있고, 팝업이나 설정에서 끄면 즉시 취소됩니다. 선택한
+  사이트 목록은 이 기기의 `storage.local`에만 저장하고, 설정 페이지의 "사이트 접근 권한"에서 확인하고 취소할 수 있습니다.
+  페이지에 포함된 다른 사이트의 iframe(임베드)을 번역할 때도
+  모든 사이트 권한을 요구하지 않으며, 팝업에서 사용자가 허용한 프레임 출처만 요청합니다. 허용한 출처 목록도
+  `storage.local`에만 저장하고 설정 페이지에서 언제든 권한을 취소할 수 있습니다. 사이트나 임베드마다 권한을 허용하기 번거로운 사용자는 설정 페이지 하단의 "모든 페이지 접근 허용"으로
+  예외적으로 모든 http(s) 사이트 접근 권한을 한 번에 허용할 수 있으며, 이때만 모든 사이트 접근 권한이 생깁니다. 허용하면
+  임베드 출처별 요청이 필요 없어지고 사이트별 자동 번역을 켤 때 권한을 묻지 않지만, 자동 번역은 여전히 사이트별로
+  켭니다. 이 권한도 설정에서 언제든 취소할 수 있습니다. 페이지에 표시되는 임베드 안내는 이미 주입된 번역 스크립트가
+  그리는 것으로, 별도의 접근 권한을 쓰지 않습니다.
 
 이 방침이 바뀌면 이 문서와 저장소의 변경 기록에 남깁니다. 문의는
 [GitHub 이슈](https://github.com/laskaflask/hdtrans-browser-extension/issues)로 받습니다.
@@ -35,12 +42,20 @@ This extension does not collect personal data.
   any server.
 - **Analytics and ads**: No usage statistics, crash reporting, advertising or tracking.
 - **Third parties**: As nothing is collected, nothing is sold or shared.
-- **Permissions**: No access to all websites is requested. The extension gets temporary access only to the tab you
-  ask to translate (context menu, toolbar or address bar icon, keyboard shortcut). Only for a site where you turn on
-  "always translate this site" in the popup does it ask the browser for access to that site (and its subdomains), and
-  once you allow it, pages of that site are translated automatically. You can take the permission back at any time in
-  the browser's extension settings, and turning the option off in the popup returns it. The list of chosen sites is
-  stored only in this device's `storage.local`.
+- **Permissions**: By default no access to all websites is requested. The extension gets temporary access only to
+  the tab you ask to translate (context menu, toolbar or address bar icon, keyboard shortcut). Only for a site where
+  you turn on "always translate this site" in the popup does it ask the browser for access to that site (and its
+  subdomains), and once you allow it, pages of that site are translated automatically. You can take the permission
+  back at any time in the browser's extension settings, and turning the option off in the popup returns it. The list
+  of chosen sites is stored only in this device's `storage.local`, and the settings page's "site access" section
+  shows and can return each one. Cross-site iframes embedded in a page are
+  translated only after you allow that frame's origin from the popup; the origins you allowed are also stored only in
+  `storage.local`, and you can return each one in the extension's settings. The settings page also offers
+  "Allow access to all pages", which requests access to all http(s) sites at once. Only then does the extension hold
+  access to all websites. With it, embed origins no longer need separate permission and enabling a site's automatic
+  translation asks for nothing, but automatic translation is still enabled site by site. You can return this
+  permission in the settings as well. The embed notice shown on a page is drawn by the translation script that is
+  already running there and uses no additional access.
 
 Changes to this policy are recorded in this document and the repository history. Questions:
 [GitHub issues](https://github.com/laskaflask/hdtrans-browser-extension/issues).

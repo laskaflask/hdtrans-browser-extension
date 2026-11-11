@@ -18,9 +18,22 @@ asks to translate (no host permissions are required). `optional_host_permissions
 popup, the popup requests the host permission for that one site (and its subdomains) with
 `permissions.request` from the click handler; once granted, the background script injects the same page
 script and starts the translation when a page of that site finishes loading. Turning the option off
-removes the permission again. `contextMenus`: one menu item that translates the page, or restores it
-once it is translated.
-`storage`: settings and the user's own dictionaries, stored locally.
+removes the permission again. The settings page lists both chosen sites (automatic translation) and
+allowed embed origins, each with a button to return it. The same optional permissions are used for
+cross-site iframes: when a
+translated page contains an embed the extension may not read, the popup shows an "allow embed
+translation" button and the page shows a small notice; only that frame's origin (for example
+`https://platform.twitter.com/*`) is requested, from the user's click in the popup. Users who do not
+want to grant origins one by one can use the "allow access to all pages" button in the settings page,
+which requests `http://*/*` and `https://*/*` at once; it can be revoked there. Nothing is requested at
+install. The notice is a DOM element created by the page script that is already running in the tab; it
+reads no cross-origin content and needs no additional permission. `contextMenus`: a single item that
+translates the page or restores it once translated. When a translated page has unreadable embeds, that
+item's title mentions how many need permission; a second item is avoided because browsers would put
+both in a submenu.
+`storage`: settings, the user's own dictionaries and the embed origins the user allowed, stored locally.
+Frames marked `translate="no"` or `.notranslate` are never translated, even when their origin is
+allowed.
 
 **Source code.** The uploaded source package builds the extension with `npm ci && npm run build:firefox`
 (Node.js 22+, npm 11, any OS); the result in `.output/firefox-mv3/` matches the submitted file

@@ -25,25 +25,25 @@ Gives temporary access to the current tab only when the user starts a translatio
 **scripting**
 
 ```text
-Injects the extension's own translation script (content-scripts/translator.js, packaged in the extension) into the tab the user asked to translate, using the access granted by activeTab. The script is not injected into any other page.
+Injects the extension's own translation script (content-scripts/translator.js, packaged in the extension) into the tab the user asked to translate, using the access granted by activeTab, and into the frames of that page that the extension is allowed to read. The script is not injected into any other page.
 ```
 
 **Host permissions (optional: http://*/*, https://*/*)**
 
 ```text
-Nothing is granted at install. Only when the user turns on "always translate this site" in the popup does the extension request access to that one site (and its subdomains), so that its Japanese pages can be translated automatically when they load. The user can revoke it at any time in the browser, and turning the option off returns it. The extension never asks for access to all sites at once.
+Nothing is granted at install (principle of least privilege). When the user turns on "always translate this site" in the popup, the extension requests access only to that site (and its subdomains) so its Japanese pages translate automatically when they load. Likewise, when a translated page includes a cross-site iframe, the user can click "allow embed translation" in the popup to grant access only to that embed's origin. Users who do not want per-site or per-embed prompts can optionally grant access to all http(s) pages in the settings page. Any granted permission can be revoked at any time in the extension settings or the browser.
 ```
 
 **contextMenus**
 
 ```text
-Adds two items to the page context menu: "translate the whole page" and "restore the original".
+Adds a single page context menu item that translates the page or, once translated, restores the original text (and notes if any cross-site embeds still need permission).
 ```
 
 **storage**
 
 ```text
-Saves the user's settings (speech style, which parts to translate, display mode) and the user dictionaries they create, in chrome.storage.local on this device.
+Saves the user's settings (speech style, which parts to translate, display mode), the user dictionaries they create, and the sites/embed origins they chose to allow, in chrome.storage.local on this device.
 ```
 
 **offscreen**
