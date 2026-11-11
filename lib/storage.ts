@@ -35,8 +35,15 @@ export const autoSitesItem = storage.defineItem<string[]>('local:autoSites', { f
  *  background moves a site to autoSitesItem when the browser grants exactly its permission. */
 export const pendingSitesItem = storage.defineItem<string[]>('local:pendingAutoSites', { fallback: [] });
 
-/** Changes a list of site keys, keeping each key once. */
-export async function updateSites(item: typeof autoSitesItem, change: (sites: string[]) => string[]): Promise<void> {
+/** Frame origin patterns the user allowed so cross-origin embeds translate, such as
+ *  "https://platform.twitter.com/*". Kept so the options page can show and revoke them. */
+export const frameOriginsItem = storage.defineItem<string[]>('local:frameOrigins', { fallback: [] });
+
+/** Changes a list of keys, keeping each key once. */
+export async function updateSites(
+  item: { getValue(): Promise<string[]>; setValue(value: string[]): Promise<void> },
+  change: (sites: string[]) => string[],
+): Promise<void> {
   await item.setValue([...new Set(change(await item.getValue()))]);
 }
 

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { grantedFor, matchSite, matchSites, siteKey, sitePatterns } from '../lib/sites';
+import {
+  frameKey,
+  grantedFor,
+  matchSite,
+  matchSites,
+  originOf,
+  originPattern,
+  siteKey,
+  sitePatterns,
+} from '../lib/sites';
 
 describe('siteKey', () => {
   it('is the host without www, in lower case', () => {
@@ -60,5 +69,33 @@ describe('grantedFor', () => {
     expect(grantedFor('example.com', ['http://*.example.com/*', 'https://*.example.com/*'])).toBe(true);
     expect(grantedFor('example.com', ['https://*.example.com/*'])).toBe(false);
     expect(grantedFor('example.com', ['http://*/*', 'https://*/*'])).toBe(false);
+  });
+});
+
+describe('originOf / originPattern', () => {
+  it('is the origin of an http(s) address', () => {
+    expect(originOf('https://Platform.Twitter.com:443/embed?x=1')).toBe('https://platform.twitter.com');
+    expect(originOf('http://localhost:8080/frame')).toBe('http://localhost:8080');
+  });
+
+  it('is null for what the extension cannot ask access for', () => {
+    expect(originOf('about:blank')).toBeNull();
+    expect(originOf('data:text/html,hi')).toBeNull();
+    expect(originOf('file:///tmp/a.html')).toBeNull();
+    expect(originOf('not a url')).toBeNull();
+  });
+
+  it('makes a host permission pattern for one origin only', () => {
+    expect(originPattern('https://embed.example.jp')).toBe('https://embed.example.jp/*');
+    // Match patterns have no port; the host pattern covers every port of the host.
+    expect(originPattern('http://localhost:8080')).toBe('http://localhost/*');
+    expect(originPattern('about:blank')).toBeNull();
+  });
+});
+
+describe('frameKey', () => {
+  it('drops the fragment so a frame matches before and after loading', () => {
+    expect(frameKey('https://embed.example.jp/a?x=1#top')).toBe('https://embed.example.jp/a?x=1');
+    expect(frameKey('not a url')).toBe('not a url');
   });
 });

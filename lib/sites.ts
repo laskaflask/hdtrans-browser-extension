@@ -1,7 +1,43 @@
 // Sites the user chose to translate automatically. Each one is a site key (see siteKey) and
-// the browser holds the matching optional host permission.
+// the browser holds the matching optional host permission. Cross-origin frames are allowed one
+// origin at a time, as an optional host permission pattern (see originPattern).
 
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+/** Optional host permission patterns covering every http(s) frame. Only kept so a broad grant
+ *  made by an older version can be recognized; translation never asks for it. */
+export const ALL_ORIGINS = ['http://*/*', 'https://*/*'];
+
+/** The http(s) origin of an address, or null for anything the extension cannot ask access for. */
+export function originOf(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+/** The optional host permission pattern for one frame origin ("https://embed.example.jp/*").
+ *  Browsers' match patterns do not take a port, so a host pattern covers every port of it. */
+export function originPattern(origin: string): string | null {
+  const parsed = originOf(origin);
+  if (!parsed) return null;
+  const { protocol, hostname } = new URL(parsed);
+  return hostname && !hostname.includes(':') ? `${protocol}//${hostname}/*` : null;
+}
+
+/** A frame address without its fragment, so the same frame matches before and after loading. */
+export function frameKey(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+    return parsed.href;
+  } catch {
+    return url;
+  }
+}
 
 /** The site an address belongs to: its host without a leading "www.", or null for pages this
  *  extension does not ask site access for (not http(s), or an IPv6 address). */

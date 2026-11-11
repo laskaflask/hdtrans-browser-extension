@@ -1,6 +1,7 @@
 // Injected on demand. Replaces Japanese text in the page with the translation and keeps the
 // originals so the page can be put back.
 import type { ContentRequest, ContentStatus, PageState, TranslateBatchResponse } from '@/lib/messages';
+import { frameKey, originOf } from '@/lib/sites';
 import { getSettings, settingsItem, type Settings } from '@/lib/storage';
 import { takeBatch } from '@/lib/schedule';
 import { hasJapanese, planBoth, planInline, planLines, type Plan } from '@/lib/text';
@@ -83,6 +84,10 @@ export default defineContentScript({
     browser.runtime.onMessage.addListener((msg: ContentRequest, _sender, sendResponse) => {
       switch (msg?.type) {
         case 'translate-page':
+          if (msg.wait) {
+            void page.translate().then(() => sendResponse(page.status()));
+            return true;
+          }
           void page.translate();
           break;
         case 'restore-page':
@@ -91,6 +96,9 @@ export default defineContentScript({
         case 'toggle-page':
           if (page.state === 'original') void page.translate();
           else page.restore();
+          break;
+        case 'translate-embeds':
+          page.retryEmbeds();
           break;
         case 'get-state':
           break;
@@ -112,6 +120,14 @@ class PageTranslator {
   private error = '';
   private userDictWarning = '';
   private settings!: Settings;
+  private translating?: Promise<void>;
+  private sawFrame = false;
+  /** Cross-origin frame origins the page includes; the popup and menu check their permissions. */
+  private frameOrigins = new Set<string>();
+  /** Cross-origin frame addresses marked translate="no"/.notranslate, or inside an opted-out subtree. */
+  private skippedFrames = new Set<string>();
+  /** Cross-origin frame addresses that should be translated (kept even if another frame shares the URL). */
+  private wantedFrames = new Set<string>();
   private observer?: MutationObserver;
   private dirty = new Set<Node>();
   private flushTimer?: ReturnType<typeof setTimeout>;
@@ -126,45 +142,219 @@ class PageTranslator {
   /** Pending jobs per element marked with PENDING_ATTR. */
   private marked = new Map<Element, number>();
   private pendingStyle?: HTMLStyleElement;
+  /** The notice shown when part of the page could not be translated for lack of frame access. */
+  private notice?: HTMLElement;
+  private noticeDismissed = false;
   private preCache = new WeakMap<Element, boolean>();
   private itemsCache = new WeakMap<Element, boolean>();
   private outOfFlowCache = new WeakMap<Element, boolean>();
+
+  private onFrameLoad = (e: Event): void => {
+    const target = e.target;
+    if (
+      this.state !== 'original' &&
+      !this.optedOutPage() &&
+      target instanceof Element &&
+      target.tagName.toUpperCase() === 'IFRAME' &&
+      !insideSkipped(target.parentElement) &&
+      !optedOut(target)
+    ) {
+      void this.translateFrames(this.generation);
+    }
+  };
 
   status(): ContentStatus {
     return {
       state: this.state,
       done: this.done,
       total: this.total,
+      ...(window === window.top && { url: location.href }),
       ...(this.error && { error: this.error }),
       ...(this.userDictWarning && { userDictWarning: this.userDictWarning }),
+      ...(this.frameOrigins.size && { frameOrigins: [...this.frameOrigins] }),
     };
   }
 
-  async translate(): Promise<void> {
-    if (this.state !== 'original') return;
+  translate(): Promise<void> {
+    if (this.state === 'original') {
+      const run = this.doTranslate().finally(() => {
+        if (this.translating === run) this.translating = undefined;
+      });
+      this.translating = run;
+    }
+    return this.translating ?? Promise.resolve();
+  }
+
+  private async doTranslate(): Promise<void> {
     this.error = '';
     this.userDictWarning = '';
     this.done = this.total = 0;
+    this.removeNotice();
+    this.noticeDismissed = false;
+    // The page itself asks not to be translated (html/body translate="no" or .notranslate).
+    // A frame that opts out stays quiet: its status is only merged into the top page's.
+    if (this.optedOutPage()) {
+      if (window === window.top) this.error = '이 페이지는 번역하지 않도록 표시되어 있습니다.';
+      return;
+    }
     this.setState('translating');
     const generation = this.generation;
     this.settings = await getSettings();
     if (generation !== this.generation) return;
-    await this.enqueue(this.collect(document.documentElement), generation);
+    document.addEventListener('load', this.onFrameLoad, true);
+    if (this.settings.observeMutations) this.observe();
+    this.sawFrame = false;
+    this.frameOrigins.clear();
+    this.skippedFrames.clear();
+    this.wantedFrames.clear();
+    const jobs = this.collect(document.documentElement);
+    const frames = window === window.top && this.sawFrame ? this.translateFrames(generation) : undefined;
+    await Promise.all([this.enqueue(jobs, generation), frames]);
     if (generation !== this.generation) return;
     this.setState('translated');
-    if (this.settings.observeMutations) this.observe();
+    void this.updateEmbedNotice();
+  }
+
+  private async translateFrames(generation: number): Promise<void> {
+    try {
+      const skip = [...this.skippedFrames].filter((u) => !this.wantedFrames.has(u));
+      const statuses: ContentStatus[] | undefined = await browser.runtime.sendMessage({
+        type: 'translate-frames',
+        skip,
+      });
+      if (generation !== this.generation || !Array.isArray(statuses)) return;
+      for (const s of statuses) {
+        if (s.userDictWarning && !this.userDictWarning) this.userDictWarning = s.userDictWarning;
+        if (s.error && !this.error) this.error = s.error;
+        // A nested frame may include a cross-origin embed of its own; offer that origin too.
+        for (const origin of s.frameOrigins ?? []) this.frameOrigins.add(origin);
+      }
+      if (this.state === 'translated') void this.updateEmbedNotice();
+    } catch {}
+  }
+
+  /** Tries the subframes again after the user allowed their origins (popup or context menu). */
+  retryEmbeds(): void {
+    if (this.state !== 'original' && window === window.top) void this.translateFrames(this.generation);
+  }
+
+  /** Shows (or updates, or removes) the notice about embeds whose origin is not allowed yet. */
+  private async updateEmbedNotice(): Promise<void> {
+    if (window !== window.top || this.state !== 'translated' || this.noticeDismissed || !this.frameOrigins.size) {
+      this.removeNotice();
+      return;
+    }
+    let missing: string[] = [];
+    try {
+      missing = (await browser.runtime.sendMessage({
+        type: 'missing-frame-origins',
+        origins: [...this.frameOrigins],
+      })) ?? [];
+    } catch {
+      return;
+    }
+    if (this.state !== 'translated' || this.noticeDismissed || !missing.length) {
+      this.removeNotice();
+      return;
+    }
+    const message = `임베드 ${missing.length}개(${missing.map(hostOfPattern).join(', ')})는 권한이 없어 번역하지 못했습니다.`;
+    const text = this.notice?.shadowRoot?.querySelector('span');
+    if (this.notice?.isConnected && text) {
+      text.textContent = message;
+      return;
+    }
+    this.removeNotice();
+    const host = document.createElement('hdtrans-embed-notice');
+    host.lang = 'ko';
+    Object.assign(host.style, {
+      all: 'initial',
+      position: 'fixed',
+      right: '16px',
+      bottom: '16px',
+      zIndex: '2147483647',
+      display: 'block',
+      maxWidth: '340px',
+      padding: '10px 32px 10px 12px',
+      background: '#1f2937',
+      color: '#f8fafc',
+      borderRadius: '10px',
+      boxShadow: '0 6px 24px rgba(0, 0, 0, 0.28)',
+      font: '13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif',
+      textAlign: 'left',
+      wordBreak: 'keep-all',
+    });
+    const box = document.createElement('div');
+    box.setAttribute('role', 'status');
+    box.setAttribute('aria-live', 'polite');
+    Object.assign(box.style, {
+      display: 'grid',
+      gap: '6px',
+      justifyItems: 'start',
+    });
+    const label = document.createElement('span');
+    label.textContent = message;
+    const allow = document.createElement('button');
+    allow.type = 'button';
+    allow.textContent = '임베드 권한 허용…';
+    Object.assign(allow.style, {
+      padding: '3px 9px',
+      border: '1px solid #475569',
+      borderRadius: '6px',
+      background: '#334155',
+      color: '#f8fafc',
+      font: '12px/1.4 system-ui, -apple-system, sans-serif',
+      cursor: 'pointer',
+    });
+    allow.addEventListener('click', () => {
+      void browser.runtime.sendMessage({ type: 'open-embed-permissions' }).catch(() => {});
+    });
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = '×';
+    close.title = '닫기';
+    close.setAttribute('aria-label', '닫기');
+    Object.assign(close.style, {
+      position: 'absolute',
+      top: '4px',
+      right: '4px',
+      width: '24px',
+      height: '24px',
+      padding: '0',
+      border: '0',
+      background: 'transparent',
+      color: '#cbd5e1',
+      font: '16px/1 system-ui, sans-serif',
+      cursor: 'pointer',
+    });
+    close.addEventListener('click', () => {
+      this.noticeDismissed = true;
+      this.removeNotice();
+    });
+    box.append(label, allow, close);
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.append(box);
+    document.documentElement.append(host);
+    this.notice = host;
+  }
+
+  private removeNotice(): void {
+    this.notice?.remove();
+    this.notice = undefined;
   }
 
   /** Switching between translation only and both redraws a translated page. */
   settingsChanged(next: Settings | null): void {
     if (this.state === 'original' || !this.settings || !next) return;
     if (!!next.bilingual === !!this.settings.bilingual) return;
-    this.restore();
+    this.restore(false);
     void this.translate();
   }
 
-  restore(): void {
+  restore(notify = true): void {
+    if (this.state === 'original') return;
     this.generation++;
+    this.translating = undefined;
+    document.removeEventListener('load', this.onFrameLoad, true);
     this.observer?.disconnect();
     this.observer = undefined;
     clearTimeout(this.flushTimer);
@@ -178,8 +368,17 @@ class PageTranslator {
     }
     this.texts.clear();
     this.attrs.clear();
+    this.frameOrigins.clear();
+    this.skippedFrames.clear();
+    this.wantedFrames.clear();
+    this.sawFrame = false;
+    this.removeNotice();
+    this.noticeDismissed = false;
     this.done = this.total = 0;
-    this.setState('original');
+    this.state = 'original';
+    if (notify && window === window.top) {
+      browser.runtime.sendMessage({ type: 'page-state', state: 'original' }).catch(() => {});
+    }
   }
 
   private setState(state: PageState): void {
@@ -218,7 +417,12 @@ class PageTranslator {
       if (this.settings.translateAttributes && !optedOut(el)) {
         for (const unit of this.attrUnits(el)) jobs.push({ units: [unit], lines: true, attribute: true });
       }
-      if (skipElement(el)) return;
+      if (tag === 'IFRAME') this.noteFrame(el);
+      if (skipElement(el)) {
+        // A frame inside an opted-out or otherwise skipped subtree must not be translated either.
+        this.noteSkippedFrames(el);
+        return;
+      }
       if (tag === 'RT') return void readings.push(...textsOf(el));
       if (el.shadowRoot) visit(el.shadowRoot);
       for (let child = el.firstChild; child; child = child.nextSibling) visit(child);
@@ -229,12 +433,66 @@ class PageTranslator {
     return jobs;
   }
 
+  /** Notes an iframe the page includes: one to translate, or one the page opted out of. */
+  private noteFrame(el: Element): void {
+    const frame = el as HTMLIFrameElement;
+    // A same-origin frame's own document is readable and checks its own frameElement when
+    // injected; a cross-origin frame's document is unreadable, so its address is all there is.
+    let sameOrigin = false;
+    try {
+      sameOrigin = !!frame.contentDocument;
+    } catch {
+      sameOrigin = false;
+    }
+    const src = (sameOrigin ? frame.contentDocument?.location.href : undefined) || frame.src;
+    if (optedOut(el) || insideSkipped(el.parentElement)) {
+      if (!sameOrigin && frame.src) this.skippedFrames.add(frameKey(frame.src));
+      return;
+    }
+    if (sameOrigin || !src || src.startsWith('about:') || src.startsWith('javascript:')) {
+      // src="", srcdoc and about:blank belong to the page's own origin, so activeTab covers them.
+      this.sawFrame = true;
+      return;
+    }
+    const origin = originOf(src);
+    if (origin === location.origin) {
+      this.sawFrame = true;
+      return;
+    }
+    if (!origin) return;
+    this.sawFrame = true;
+    this.wantedFrames.add(frameKey(frame.src));
+    this.frameOrigins.add(origin);
+    if (el.getRootNode() !== document) el.addEventListener('load', this.onFrameLoad);
+  }
+
+  /** Frames below an element that is skipped as a whole (translate="no", code, ...). */
+  private noteSkippedFrames(root: Element): void {
+    for (const frame of root.querySelectorAll('iframe')) this.noteFrame(frame);
+  }
+
+  private optedOutPage(): boolean {
+    if (optedOut(document.documentElement) || (!!document.body && optedOut(document.body))) return true;
+    for (let w: Window = window; w !== w.top; ) {
+      let frame: Element | null = null;
+      try {
+        frame = w.frameElement;
+      } catch {
+        break;
+      }
+      if (!frame) break;
+      if (optedOut(frame) || insideSkipped(frame.parentElement)) return true;
+      w = w.parent;
+    }
+    return false;
+  }
+
   /** Jobs for one inline run of text nodes; only runs with Japanese still to translate count. */
   private runJobs(nodes: Text[], readings: Text[]): Job[] {
     const all = [...nodes, ...readings];
     let fresh = all.filter((n) => {
       const known = this.texts.get(n);
-      return !known || n.nodeValue !== known.written;
+      return !known || n.nodeValue !== (known.written ?? known.original);
     });
     // Shown with its translation, the whole run is still original, so it is translated again whole.
     if (this.settings.bilingual && fresh.length) fresh = all;
@@ -304,7 +562,7 @@ class PageTranslator {
       if (!value || !hasJapanese(value)) continue;
       let byName = this.attrs.get(el);
       const known = byName?.get(name);
-      if (known && value === known.written) continue;
+      if (known && value === (known.written ?? known.original)) continue;
       const unit: Unit = known ?? {
         original: value,
         element: el,
@@ -564,7 +822,9 @@ class PageTranslator {
     this.dirty.clear();
     // Drop roots inside other roots so no text is collected twice.
     const top = roots.filter((n) => !roots.some((o) => o !== n && o.contains(n)));
+    this.sawFrame = false;
     const jobs = top.flatMap((root) => this.collect(root));
+    if (this.sawFrame) void this.translateFrames(this.generation);
     if (jobs.length) void this.enqueue(jobs, this.generation);
   }
 }
@@ -670,6 +930,15 @@ function withReadings(
     ruby.append(tidy(g.text), rt);
     return ruby;
   });
+}
+
+/** The host of a frame permission pattern ("http://127.0.0.1/*" → "127.0.0.1"). */
+function hostOfPattern(pattern: string): string {
+  try {
+    return new URL(pattern.replace(/\*$/, '')).host;
+  } catch {
+    return pattern;
+  }
 }
 
 /** The nearest ancestor that is not inline: it decides whether whitespace is preformatted. */
