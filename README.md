@@ -108,8 +108,8 @@ npm test                 # 엔진에 동적 코드가 없는지, 패키지와 �
 AMO는 번들·압축한 코드의 원본과, 검토자가 같은 결과물을 다시 만들 수 있는 빌드 방법을 요구합니다.
 `npm run zip:firefox`가 만드는 `.output/hdtrans-browser-extension-<버전>-sources.zip`을 소스로 올립니다.
 
-- 환경: Node.js 22 이상, npm 11. 운영체제는 상관없습니다. macOS(Node 23)와 Node 24.22·npm 11.21에서 빌드한
-  결과물이 바이트 단위로 같음을 확인했습니다.
+- 환경: Node.js 22 이상, npm 11. 운영체제는 상관없습니다. macOS(Node 23)와 Node 24.22·npm 11.21, 그리고
+  Node 22.23·24.18(npm 11.16)에서 빌드한 결과물이 바이트 단위로 같음을 확인했습니다.
 - 빌드: 소스 압축을 푼 폴더에서 아래를 실행하면 `.output/firefox-mv3/`가 제출한 확장과 같게 나옵니다.
 
   ```sh
@@ -122,6 +122,45 @@ AMO는 번들·압축한 코드의 원본과, 검토자가 같은 결과물을 �
   있습니다. `runtime.js`와 사전(`dicts.hdsnap`, `dicts.txt`)은 npm `hdtrans` 패키지 파일을 고치지 않고 그대로
   복사합니다(`package-lock.json`에 버전과 무결성 값이 있음).
 - 제출할 때 검토자 메모 칸에는 [docs/amo-reviewer-notes.md](docs/amo-reviewer-notes.md)의 영어 본문을 붙여 넣습니다.
+
+## 스토어 배포본 확인
+
+[Chrome 웹 스토어](https://chromewebstore.google.com/detail/bcdkkloifhaoahiekaahepkmkhfaafcd)와
+[Firefox 애드온(AMO)](https://addons.mozilla.org/firefox/addon/hdtrans-ja-ko@hdtrans-browser-extension/)가 배포하는 패키지가
+이 저장소의 소스로 만든 것인지 누구나 확인할 수 있습니다. 빌드가 재현되므로(같은 소스면 바이트 단위로 같은 결과물),
+스토어 패키지를 받아 같은 버전의 Git 태그(`v<버전>`)를 빌드한 결과와 비교하면 됩니다.
+
+스토어는 받은 파일을 그대로 배포하되, 서명을 덧붙이고 `manifest.json`만 고칩니다.
+
+| 스토어 | 덧붙이는 서명 | `manifest.json` |
+|---|---|---|
+| Chrome 웹 스토어 | `_metadata/verified_contents.json`(파일별 해시, 개발자와 웹 스토어가 서명) | `"update_url": "https://clients2.google.com/service/update2/crx"`를 더함 |
+| AMO | `META-INF/`(`mozilla.rsa`, `cose.sig` 등 Mozilla 서명) | 들여쓰기하고 한글을 `\uXXXX`로 바꿔 다시 씀(값은 같음) |
+
+그래서 서명 폴더는 빼고, `manifest.json`은 JSON 값으로(Chrome은 `update_url`을 빼고) 비교하며, 나머지 파일은 바이트
+단위로 비교합니다. 2026-11-02에 확인한 결과, 아래 버전은 모두 이 차이 말고는 태그를 빌드한 결과와 같았습니다.
+
+| 스토어 | 버전 | 비교한 파일 |
+|---|---|---|
+| AMO | 0.4.0, 0.3.0 | 25개(`manifest.json` 포함) |
+| Chrome 웹 스토어 | 0.3.0 | 28개(`manifest.json` 포함) |
+
+`scripts/verify-store.mjs`가 이 비교를 합니다. 스토어에서 현재 버전을 받고, 같은 버전의 태그를 임시 폴더에 풀어
+`npm ci`로 빌드한 뒤 파일을 하나씩 비교합니다. 같으면 0, 다르면 다른 파일을 나열하고 1로 끝납니다.
+
+```sh
+git fetch --tags
+npm run verify:store -- firefox                    # AMO의 현재 버전
+npm run verify:store -- firefox --version 0.3.0    # AMO의 지난 버전
+npm run verify:store -- chrome                     # Chrome 웹 스토어의 현재 버전
+npm run verify:store -- chrome --build .output/chrome-mv3   # 태그 대신 이미 빌드한 폴더와 비교
+```
+
+- 빌드 환경은 [AMO 제출용 소스](#firefox-애드온amo-제출용-소스)와 같습니다(Node.js 22 이상, npm 11).
+- Chrome 웹 스토어는 현재 버전만 내려받을 수 있습니다. 심사 중인 버전은 승인된 뒤에 확인할 수 있습니다.
+- Chrome 빌드는 AMO 제출용 소스 zip이 아니라 Git 태그로 만들어야 합니다. 소스 zip에는 Chrome 전용인
+  `entrypoints/offscreen/`이 빠져 있기 때문입니다.
+- 확인하는 대상은 스토어가 지금 배포하는 패키지입니다. 브라우저에 이미 설치된 파일을 직접 검사하지는 않습니다.
 
 ## 구조
 

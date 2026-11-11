@@ -14,6 +14,7 @@
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "build:engine": "scripts/build-engine.sh",
+    "verify:store": "node scripts/verify-store.mjs",
     "compile": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "npm run build:all && node tests/e2e/run.mjs",
