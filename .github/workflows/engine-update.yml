@@ -105,6 +105,7 @@ jobs:
           git push origin "$branch"
 
           gh pr create $draft --base "${GITHUB_REF_NAME}" --head "$branch" \
+            --assignee laskaflask \
             --title "chore: hdTrans 엔진 $latest로 업데이트" \
             --body "hdtrans $current → $latest. 자동 생성된 PR입니다.
 
